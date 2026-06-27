@@ -5,6 +5,36 @@ const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
 let genAI: GoogleGenerativeAI | null = null;
 if (apiKey) {
   genAI = new GoogleGenerativeAI(apiKey);
+
+  // Monkey-patch getGenerativeModel to support robust fallback across different API key capabilities
+  const originalGetModel = genAI.getGenerativeModel.bind(genAI);
+  genAI.getGenerativeModel = function(options: any) {
+    const originalModel = originalGetModel(options);
+    
+    originalModel.generateContent = async function(request: any) {
+      // Priority list of models to try
+      const modelsToTry = ['gemini-1.5-pro', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
+      let lastError = null;
+      
+      for (const modelName of modelsToTry) {
+        try {
+          const fallbackOptions = { ...options, model: modelName };
+          const fallbackModel = originalGetModel(fallbackOptions);
+          return await fallbackModel.generateContent.call(fallbackModel, request);
+        } catch (err: any) {
+          lastError = err;
+          // Only fallback on 404 / Model not found errors
+          if (err.message && (err.message.includes('404') || err.message.includes('not found') || err.message.includes('not supported'))) {
+            console.warn(`[Gemini API Fallback] Model ${modelName} returned 404/Not Supported. Trying next fallback model...`);
+            continue;
+          }
+          throw err;
+        }
+      }
+      throw lastError;
+    };
+    return originalModel;
+  };
 } else {
   console.warn(
     'VITE_GEMINI_API_KEY is missing. AI analysis will run in mock demonstration mode.'
