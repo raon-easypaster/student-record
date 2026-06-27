@@ -24,7 +24,7 @@ export async function summarizeReferenceMaterial(
   }
 
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-pro' });
     const prompt = `
       다음 자료를 고등학생 생기부 활동 참고용으로 요약해줘.
       자료 유형: ${type}
@@ -114,7 +114,7 @@ export async function analyzeUniversityMatch(
 
   try {
     const model = genAI.getGenerativeModel({ 
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-pro',
       generationConfig: { responseMimeType: "application/json" }
     });
 
@@ -251,7 +251,7 @@ export async function generateFinalAdmissionReport(
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-pro',
       generationConfig: { responseMimeType: "application/json" }
     });
 
@@ -368,7 +368,7 @@ export async function analyzeDocumentOcr(
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-pro',
       generationConfig: { responseMimeType: "application/json" }
     });
 
@@ -479,7 +479,7 @@ export async function generatePersonalBranding(
 
   try {
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash-latest',
+      model: 'gemini-1.5-pro',
       generationConfig: { responseMimeType: "application/json" }
     });
 
