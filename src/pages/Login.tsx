@@ -174,46 +174,67 @@ export const Login: React.FC = () => {
       } else {
         // Sign Up
         if (isMockServer) {
-          throw new Error('Vercel에 Supabase API 환경 변수가 등록되지 않았습니다. 실서버 가입을 진행할 수 없습니다. 임시 테스트는 하단의 [체험용 데모 계정으로 시작하기]를 클릭하여 주십시오.');
+          throw new Error('Vercel에 Supabase API 환경 변수가 등록되지 않았습니다. 임시 테스트는 하단의 [체험용 데모 계정으로 시작하기]를 클릭해 주십시오.');
         }
 
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
         });
-        if (error) throw error;
-        
-        if (data.user) {
-          const autoApprove = email === 'admin@naver.com' || email === 'galeb76@naver.com';
-          // Create student profile
+
+        // 오류 처리
+        if (error) {
+          const errCode = (error as any).status ?? (error as any).code ?? '';
+          if (String(errCode) === '0' || String(error.message).includes('fetch')) {
+            throw new Error('서버 연결에 실패했습니다. Vercel 환경변수(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)가 올바른지 확인해 주십시오.');
+          }
+          throw error;
+        }
+
+        // data.user가 null인 경우 = 이메일 확인 중복 발송 등 (기존 이메일)
+        if (!data.user) {
+          throw new Error('이미 가입된 이메일이거나 이메일 확인이 필요합니다. 받은 메일함을 확인해 주십시오.');
+        }
+
+        // SECURITY DEFINER 함수로 프로필 생성 (RLS 우회 + 이메일 미확인 상태도 처리)
+        const { error: rpcError } = await supabase.rpc('create_student_profile_on_signup', {
+          p_id: data.user.id,
+          p_name: name || '학생',
+          p_email: email,
+          p_birth_date: targetBirthDate || null,
+          p_current_grade: grade,
+          p_career_wish: '진로 희망을 작성해주세요.',
+          p_graduation_date: `${new Date().getFullYear() + (4 - grade)}-02-15`
+        });
+
+        if (rpcError) {
+          console.error('RPC 프로필 생성 실패:', rpcError);
+          // RPC 함수가 없는 경우 직접 INSERT 시도 (fallback)
           const { error: profileError } = await supabase
             .from('student_profile')
-            .insert([
-              {
-                id: data.user.id,
-                name: name || '학생',
-                email: email,
-                birth_date: targetBirthDate || null,
-                current_grade: grade,
-                career_wish: '진로 희망을 작성해주세요.',
-                graduation_date: `${new Date().getFullYear() + (4 - grade)}-02-15`,
-                is_approved: autoApprove,
-                is_admin: autoApprove
-              }
-            ]);
-            
+            .insert([{
+              id: data.user.id,
+              name: name || '학생',
+              email: email,
+              birth_date: targetBirthDate || null,
+              current_grade: grade,
+              career_wish: '진로 희망을 작성해주세요.',
+              graduation_date: `${new Date().getFullYear() + (4 - grade)}-02-15`,
+              is_approved: email === 'admin@naver.com' || email === 'galeb76@naver.com',
+              is_admin: email === 'admin@naver.com' || email === 'galeb76@naver.com'
+            }]);
           if (profileError) {
-            console.error('Profile creation failed:', profileError);
-            alert('학생 정보 등록(프로필 생성)에 실패했습니다. Supabase DB 마이그레이션이 작동 완료되었는지 확인해 주십시오.\n에러 내용: ' + profileError.message);
-            throw profileError;
+            console.error('Fallback INSERT 실패:', profileError);
+            throw new Error('학생 프로필 등록에 실패했습니다: ' + profileError.message + '\n\n[해결방법] Supabase SQL Editor에서 signup_function.sql을 실행해 주십시오.');
           }
+        }
 
-          if (!autoApprove) {
-            alert('회원가입 신청이 완료되었습니다! 관리자 승인 완료 후 로그인이 가능합니다.');
-            setIsLogin(true);
-            setLoading(false);
-            return;
-          }
+        const isAutoApproved = email === 'admin@naver.com' || email === 'galeb76@naver.com';
+        if (!isAutoApproved) {
+          alert('✅ 회원가입 신청이 완료되었습니다!\n관리자 승인 완료 후 로그인이 가능합니다.\n\n(이메일 확인 메일이 발송되었을 수 있습니다.)');
+          setIsLogin(true);
+          setLoading(false);
+          return;
         }
       }
 
