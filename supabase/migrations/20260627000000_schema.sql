@@ -221,3 +221,61 @@ alter table public.student_schedules enable row level security;
 
 create policy "Users can perform all actions on own schedules" on public.student_schedules
     for all using (auth.uid() = student_id) with check (auth.uid() = student_id);
+
+-- 11. 외부 상담용 공유 링크 (shared_links) 테이블
+create table if not exists public.shared_links (
+    id uuid default gen_random_uuid() primary key,
+    student_id uuid references auth.users on delete cascade not null,
+    expires_at timestamp with time zone not null,
+    is_active boolean default true not null,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.shared_links enable row level security;
+
+-- 공유 링크 CRUD 정책 (소유자 권한)
+drop policy if exists "Users can manage own shared links" on public.shared_links;
+create policy "Users can manage own shared links" on public.shared_links
+    for all using (auth.uid() = student_id) with check (auth.uid() = student_id);
+
+-- 누구나 활성화된 공유 링크 메타는 조회 가능 (유효성 검증용)
+drop policy if exists "Anyone can read active shared links metadata" on public.shared_links;
+create policy "Anyone can read active shared links metadata" on public.shared_links
+    for select using (is_active = true and expires_at > now());
+
+-- 공유 링크 기반 타 테이블 익명 조회 RLS 권한 부여
+drop policy if exists "Anyone can read profile if active shared link exists" on public.student_profile;
+create policy "Anyone can read profile if active shared link exists" on public.student_profile
+    for select using (exists (
+        select 1 from public.shared_links 
+        where shared_links.student_id = student_profile.student_id 
+        and shared_links.is_active = true 
+        and shared_links.expires_at > now()
+    ));
+
+drop policy if exists "Anyone can read activities if active shared link exists" on public.activities;
+create policy "Anyone can read activities if active shared link exists" on public.activities
+    for select using (exists (
+        select 1 from public.shared_links 
+        where shared_links.student_id = activities.student_id 
+        and shared_links.is_active = true 
+        and shared_links.expires_at > now()
+    ));
+
+drop policy if exists "Anyone can read academic_records if active shared link exists" on public.academic_records;
+create policy "Anyone can read academic_records if active shared link exists" on public.academic_records
+    for select using (exists (
+        select 1 from public.shared_links 
+        where shared_links.student_id = academic_records.student_id 
+        and shared_links.is_active = true 
+        and shared_links.expires_at > now()
+    ));
+
+drop policy if exists "Anyone can read target_universities if active shared link exists" on public.target_universities;
+create policy "Anyone can read target_universities if active shared link exists" on public.target_universities
+    for select using (exists (
+        select 1 from public.shared_links 
+        where shared_links.student_id = target_universities.student_id 
+        and shared_links.is_active = true 
+        and shared_links.expires_at > now()
+    ));

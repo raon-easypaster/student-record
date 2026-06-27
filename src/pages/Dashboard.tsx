@@ -13,7 +13,9 @@ import {
   Edit2,
   Check,
   X,
-  Plus
+  Plus,
+  Share2,
+  Globe
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -87,6 +89,115 @@ export const Dashboard: React.FC = () => {
   const [careerInput, setCareerInput] = useState<string>('');
   const [isEditingMemo, setIsEditingMemo] = useState<boolean>(false);
   const [memoInput, setMemoInput] = useState<string>('');
+
+  // --- Anonymized Portfolio Sharing states ---
+  const [isShareModalOpen, setIsShareModalOpen] = useState<boolean>(false);
+  const [shareDuration, setShareDuration] = useState<number>(7);
+  const [activeShareLink, setActiveShareLink] = useState<any>(null);
+  const [generatingShare, setGeneratingShare] = useState<boolean>(false);
+
+  const fetchActiveShareLink = async () => {
+    const isMock = localStorage.getItem('mock_user_active') === 'true';
+    try {
+      if (isMock) {
+        const stored = localStorage.getItem('mock_shared_links');
+        const list = stored ? JSON.parse(stored) : [];
+        const matched = list.find((l: any) => l.student_id === (user?.id || 'mock-id') && l.is_active && new Date(l.expires_at) > new Date());
+        setActiveShareLink(matched || null);
+      } else {
+        const { data, error } = await supabase
+          .from('shared_links')
+          .select('*')
+          .eq('student_id', user?.id)
+          .eq('is_active', true)
+          .gt('expires_at', new Date().toISOString())
+          .order('created_at', { ascending: false });
+        if (!error && data && data.length > 0) {
+          setActiveShareLink(data[0]);
+        } else {
+          setActiveShareLink(null);
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleCreateShareLink = async () => {
+    setGeneratingShare(true);
+    const isMock = localStorage.getItem('mock_user_active') === 'true';
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + shareDuration);
+
+    try {
+      const tokenUuid = 'share-' + Math.random().toString(36).substring(2, 15) + '-' + Math.random().toString(36).substring(2, 15);
+
+      if (isMock) {
+        const stored = localStorage.getItem('mock_shared_links');
+        let list = stored ? JSON.parse(stored) : [];
+        list = list.map((l: any) => l.student_id === (user?.id || 'mock-id') ? { ...l, is_active: false } : l);
+
+        const newLink = {
+          id: tokenUuid,
+          student_id: user?.id || 'mock-id',
+          expires_at: expiresAt.toISOString(),
+          is_active: true,
+          created_at: new Date().toISOString()
+        };
+        list.push(newLink);
+        localStorage.setItem('mock_shared_links', JSON.stringify(list));
+        setActiveShareLink(newLink);
+      } else {
+        await supabase
+          .from('shared_links')
+          .update({ is_active: false })
+          .eq('student_id', user?.id);
+
+        const { data, error } = await supabase
+          .from('shared_links')
+          .insert({
+            student_id: user?.id,
+            expires_at: expiresAt.toISOString(),
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        setActiveShareLink(data);
+      }
+      alert('상담용 안심 공유 링크가 정상 생성되었습니다!');
+    } catch (err) {
+      console.error(err);
+      alert('공유 링크 생성 중 오류가 발생했습니다.');
+    } finally {
+      setGeneratingShare(false);
+    }
+  };
+
+  const handleRevokeShareLink = async () => {
+    if (!confirm('현재 공유 중인 링크를 즉시 폐쇄(만료)하시겠습니까? 더 이상 상담용으로 열람할 수 없게 됩니다.')) return;
+    const isMock = localStorage.getItem('mock_user_active') === 'true';
+    try {
+      if (isMock) {
+        const stored = localStorage.getItem('mock_shared_links');
+        let list = stored ? JSON.parse(stored) : [];
+        list = list.map((l: any) => l.id === activeShareLink?.id ? { ...l, is_active: false } : l);
+        localStorage.setItem('mock_shared_links', JSON.stringify(list));
+      } else {
+        const { error } = await supabase
+          .from('shared_links')
+          .update({ is_active: false })
+          .eq('id', activeShareLink?.id);
+        if (error) throw error;
+      }
+      setActiveShareLink(null);
+      alert('공유 링크가 즉시 해제 및 폐쇄되었습니다.');
+    } catch (err) {
+      console.error(err);
+      alert('공유 링크 차단 과정에서 오류가 발생했습니다.');
+    }
+  };
 
   // --- Admin Members Approval states ---
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
@@ -369,6 +480,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    fetchActiveShareLink();
     if (profile?.is_admin) {
       fetchPendingUsers();
     }
@@ -604,6 +716,24 @@ export const Dashboard: React.FC = () => {
                 {profile?.memo ? `"${profile.memo}"` : '학습 습관, 극복 사유 등의 특이사항을 이곳에 기록하세요.'}
               </p>
             )}
+          </div>
+
+          {/* 안심 공유 링크 생성 패널 단추 */}
+          <div className="flex flex-col justify-center items-center md:items-end border-t md:border-t-0 md:border-l border-slate-100 pt-4 md:pt-0 md:pl-6 z-10 shrink-0">
+            <button
+              onClick={() => setIsShareModalOpen(true)}
+              className={`px-4 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center gap-1.5 shadow ${
+                activeShareLink
+                  ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-600 border border-emerald-100'
+                  : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-900/10'
+              }`}
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              {activeShareLink ? '포트폴리오 공유 중' : '외부 상담용 공유'}
+            </button>
+            <p className="text-[9px] text-slate-400 font-bold mt-1.5 text-center md:text-right">
+              {activeShareLink ? '링크가 활성화되어 있습니다.' : '읽기전용 안심 링크 생성'}
+            </p>
           </div>
         </div>
 
@@ -1096,6 +1226,96 @@ export const Dashboard: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 안심 포트폴리오 공유 링크 생성/관리 모달 */}
+      {isShareModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md border border-slate-100 shadow-2xl p-6 space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-sm font-black text-slate-800 flex items-center gap-1.5">
+                <Globe className="w-5 h-5 text-indigo-600 animate-spin" />
+                상담용 안심 공유 링크 관리
+              </h3>
+              <button
+                onClick={() => setIsShareModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs font-semibold text-slate-700">
+              <p className="text-[11px] text-slate-400 leading-relaxed font-semibold">
+                주민번호, 학번, 이름 정보 등 민감한 개인식별정보가 **자동 암호 마스킹**된 읽기 전용 대시보드 링크를 생성합니다. 선생님 또는 상담 멘토에게 안전하게 공유할 수 있습니다.
+              </p>
+
+              {activeShareLink ? (
+                <div className="space-y-3 bg-emerald-50/50 border border-emerald-100 p-4 rounded-2xl">
+                  <span className="bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded text-[9px] font-black uppercase">
+                    공유 링크 활성화 중
+                  </span>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] text-slate-500 font-bold">상담 웹 공유 URL (클릭하여 전체선택 복사)</label>
+                    <input
+                      type="text"
+                      readOnly
+                      onClick={(e) => (e.target as any).select()}
+                      value={`${window.location.origin}/share/${activeShareLink.id}`}
+                      className="w-full bg-white border border-emerald-200 p-2.5 rounded-xl outline-none text-emerald-800 font-bold select-all"
+                    />
+                  </div>
+
+                  <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold">
+                    <span>만료 예정일: {new Date(activeShareLink.expires_at).toLocaleString()}</span>
+                  </div>
+
+                  <button
+                    onClick={handleRevokeShareLink}
+                    className="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-500 font-black py-2.5 rounded-xl transition-all"
+                  >
+                    공유 링크 즉시 폐쇄 (열람 차단)
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-slate-500 font-bold">공유 유효 기간 (만료 기간 설정)</label>
+                    <select
+                      value={shareDuration}
+                      onChange={(e) => setShareDuration(Number(e.target.value))}
+                      className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl outline-none focus:border-brand-500 font-bold"
+                    >
+                      <option value={1}>1일 간 유효 (단기 상담용)</option>
+                      <option value={7}>7일 간 유효 (일주일 간 열람)</option>
+                      <option value={30}>30일 간 유효 (장기 멘토링용)</option>
+                    </select>
+                  </div>
+
+                  <button
+                    onClick={handleCreateShareLink}
+                    disabled={generatingShare}
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-3 rounded-2xl shadow-lg shadow-indigo-900/10 transition-all flex items-center justify-center gap-1.5"
+                  >
+                    <Share2 className="w-4 h-4" />
+                    새로운 공유 링크 발급하기
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-2 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsShareModalOpen(false)}
+                className="border border-slate-200 hover:bg-slate-100 px-5 py-2 rounded-xl font-bold text-xs"
+              >
+                닫기
+              </button>
+            </div>
           </div>
         </div>
       )}

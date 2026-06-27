@@ -10,6 +10,7 @@ import { Growth } from './pages/Growth';
 import { Goals } from './pages/Goals';
 import { University } from './pages/University';
 import { Library } from './pages/Library';
+import { ShareView } from './pages/ShareView';
 
 const App: React.FC = () => {
   return (
@@ -18,6 +19,9 @@ const App: React.FC = () => {
         <Routes>
           {/* Auth Route */}
           <Route path="/login" element={<Login />} />
+          
+          {/* Anonymized Counseling Shared Link */}
+          <Route path="/share/:token" element={<ShareView />} />
 
           {/* Core App Layout and Routes */}
           <Route path="/" element={<Layout />}>
