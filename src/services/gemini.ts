@@ -28,10 +28,24 @@ if (apiKey) {
             console.warn(`[Gemini API Fallback] Model ${modelName} returned 404/Not Supported. Trying next fallback model...`);
             continue;
           }
-          throw err;
         }
       }
-      throw lastError;
+
+      // 모든 모델이 실패했을 경우, API 키에 실제로 할당된 모델 목록을 조회하여 에러 메시지에 포함합니다.
+      let availableModels = '조회 불가';
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
+        if (res.ok) {
+          const data = await res.json();
+          availableModels = data.models ? data.models.map((m: any) => m.name.replace('models/', '')).join(', ') : '없음';
+        } else {
+          availableModels = `조회 실패 (${res.status})`;
+        }
+      } catch (e) {
+        availableModels = '조회 중 오류 발생';
+      }
+
+      throw new Error(`[API 권한 오류] 모든 최신/구형 모델(1.5 Pro, Flash, 1.0 Pro) 접근이 거부되었습니다. 원본 에러: ${lastError?.message}. \n\n[현재 API 키로 사용 가능한 모델 목록]: ${availableModels}\n\n* 이 목록에 gemini 모델이 없다면 구글 클라우드 콘솔에서 Generative Language API가 비활성화되어 있거나 결제/리전 제한에 걸린 상태입니다.`);
     };
     return originalModel;
   };
