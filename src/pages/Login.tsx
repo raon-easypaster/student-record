@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { supabase } from '../services/supabase';
+import { supabase, isMockServer } from '../services/supabase';
 import { useActiveSemester } from '../context/ActiveSemesterContext';
 import { useNavigate } from 'react-router-dom';
 import { GraduationCap, Mail, Lock, User, Sparkles } from 'lucide-react';
@@ -19,9 +19,7 @@ export const Login: React.FC = () => {
   const { refreshProfile } = useActiveSemester();
   const navigate = useNavigate();
 
-  const isLocalMock = !import.meta.env.VITE_SUPABASE_URL || 
-                      import.meta.env.VITE_SUPABASE_URL.includes('placeholder-project') || 
-                      import.meta.env.VITE_SUPABASE_URL === '';
+  const isLocalMock = isMockServer;
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -175,11 +173,7 @@ export const Login: React.FC = () => {
         }
       } else {
         // Sign Up
-        const isMockUrl = !import.meta.env.VITE_SUPABASE_URL || 
-                          import.meta.env.VITE_SUPABASE_URL.includes('placeholder-project') || 
-                          import.meta.env.VITE_SUPABASE_URL === '';
-        
-        if (isMockUrl) {
+        if (isMockServer) {
           throw new Error('Vercel에 Supabase API 환경 변수가 등록되지 않았습니다. 실서버 가입을 진행할 수 없습니다. 임시 테스트는 하단의 [체험용 데모 계정으로 시작하기]를 클릭하여 주십시오.');
         }
 
