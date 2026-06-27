@@ -203,12 +203,8 @@ export const Dashboard: React.FC = () => {
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
 
   const fetchPendingUsers = async () => {
-    // 항상 Supabase에서 먼저 조회 (관리자가 mock 우회 로그인이어도 실제 DB 데이터를 읽어야 함)
-    const { data: supabaseData, error: supabaseError } = await supabase
-      .from('student_profile')
-      .select('*')
-      .eq('is_approved', false)
-      .order('created_at', { ascending: false });
+    // 항상 Supabase에서 먼저 조회 (관리자가 mock 우회 로그인이어도 실제 DB 데이터를 읽어야 함 - RLS 우회를 위해 RPC 사용)
+    const { data: supabaseData, error: supabaseError } = await supabase.rpc('get_pending_users');
 
     if (!supabaseError && supabaseData !== null) {
       // Supabase에서 정상 조회된 경우
@@ -234,11 +230,8 @@ export const Dashboard: React.FC = () => {
 
   const handleApproveUser = async (userId: string) => {
     try {
-      // Supabase 승인 시도 (항상 우선)
-      const { error } = await supabase
-        .from('student_profile')
-        .update({ is_approved: true })
-        .eq('id', userId);
+      // Supabase 승인 시도 (항상 우선 - RLS 우회를 위해 RPC 사용)
+      const { error } = await supabase.rpc('approve_student_profile', { p_id: userId });
 
       if (error) {
         // Supabase 실패 시 localStorage fallback
@@ -258,11 +251,8 @@ export const Dashboard: React.FC = () => {
   const handleRejectUser = async (userId: string) => {
     if (!confirm('정말 이 가입 신청을 거절하고 영구 삭제하시겠습니까?')) return;
     try {
-      // Supabase에서 삭제 시도 (항상 우선)
-      const { error } = await supabase
-        .from('student_profile')
-        .delete()
-        .eq('id', userId);
+      // Supabase에서 삭제 시도 (항상 우선 - RLS 우회를 위해 RPC 사용)
+      const { error } = await supabase.rpc('reject_student_profile', { p_id: userId });
 
       if (error) {
         // Supabase 실패 시 localStorage fallback
