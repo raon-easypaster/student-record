@@ -5,12 +5,15 @@ import type { User } from '@supabase/supabase-js';
 export interface StudentProfile {
   id: string;
   name: string;
+  email?: string;
   birth_date?: string;
   current_grade: number;
   current_class?: number;
   career_wish?: string;
   memo?: string;
   graduation_date?: string;
+  is_approved?: boolean;
+  is_admin?: boolean;
 }
 
 interface ActiveSemesterContextType {
@@ -45,12 +48,15 @@ export const ActiveSemesterProvider: React.FC<{ children: React.ReactNode }> = (
           const defaultProfile = {
             id: 'mock-user-id',
             name: '김대입',
+            email: 'student@example.com',
             birth_date: '2008-03-15',
             current_grade: 1,
             current_class: 3,
             career_wish: '소프트웨어 개발자 / AI 연구원',
             memo: '수학과 컴퓨터 공학에 관심이 많음.',
-            graduation_date: '2027-02-15'
+            graduation_date: '2027-02-15',
+            is_approved: true,
+            is_admin: true
           };
           localStorage.setItem('mock_student_profile', JSON.stringify(defaultProfile));
           setProfile(defaultProfile);

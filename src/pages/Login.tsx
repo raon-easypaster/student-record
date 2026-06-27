@@ -35,33 +35,50 @@ export const Login: React.FC = () => {
           if (!matched) {
             throw new Error('이메일 또는 비밀번호가 올바르지 않습니다. (로컬 임시 모드)');
           }
+
+          if (!matched.is_approved) {
+            throw new Error('아직 승인 대기 중인 계정입니다. 관리자 승인 후 로그인이 가능합니다. (로컬 임시 모드)');
+          }
+
           localStorage.setItem('mock_user_active', 'true');
           localStorage.setItem('mock_student_profile', JSON.stringify({
             id: matched.id,
             name: matched.name,
+            email: matched.email,
             birth_date: matched.birthDate || '2008-03-15',
             current_grade: matched.grade,
             current_class: 3,
             career_wish: '소프트웨어 개발자 / AI 연구원',
             memo: '로컬 데이터 모드로 정상 가입 및 로그인되었습니다.',
-            graduation_date: `${new Date().getFullYear() + (4 - matched.grade)}-02-15`
+            graduation_date: `${new Date().getFullYear() + (4 - matched.grade)}-02-15`,
+            is_approved: matched.is_approved,
+            is_admin: matched.is_admin
           }));
         } else {
           // Local signup register
           if (mockUsers.some((u: any) => u.email === email)) {
             throw new Error('이미 등록된 이메일 주소입니다. (로컬 임시 모드)');
           }
+
+          const autoApprove = email === 'admin@naver.com' || email === 'galeb76@naver.com';
           const newMockUser = {
             id: 'mock-user-' + Date.now(),
             email,
             password,
             name: name || '학생',
             grade: grade || 1,
-            birthDate
+            birthDate,
+            is_approved: autoApprove,
+            is_admin: autoApprove
           };
           mockUsers.push(newMockUser);
           localStorage.setItem('mock_users', JSON.stringify(mockUsers));
-          alert('회원가입이 완료되었습니다! (로컬 임시 브라우저 저장소에 등록됨)\n로그인을 진행해주세요.');
+
+          if (!autoApprove) {
+            alert('회원등록이 신청되었습니다! 관리자의 가입 승인 대기 상태입니다.\n(테스트 팁: galeb76@naver.com 또는 admin@naver.com 계정으로 접속하시면 관리자 전용 대시보드 뷰에서 승인이 가능합니다.)');
+          } else {
+            alert('관리자 계정으로 즉시 가입 및 승인이 완료되었습니다! 로그인을 진행해주세요.');
+          }
           setIsLogin(true);
           setLoading(false);
           return;
@@ -81,11 +98,27 @@ export const Login: React.FC = () => {
     try {
       if (isLogin) {
         // Sign In
-        const { error } = await supabase.auth.signInWithPassword({
+        const { data: authData, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (error) throw error;
+
+        if (authData.user) {
+          // Check approval status
+          const { data: profileData, error: profileErr } = await supabase
+            .from('student_profile')
+            .select('is_approved')
+            .eq('id', authData.user.id)
+            .single();
+
+          if (profileErr) throw profileErr;
+
+          if (profileData && !profileData.is_approved) {
+            await supabase.auth.signOut();
+            throw new Error('아직 승인 대기 중인 계정입니다. 관리자 승인 후 로그인이 가능합니다.');
+          }
+        }
       } else {
         // Sign Up
         const { data, error } = await supabase.auth.signUp({
@@ -95,6 +128,7 @@ export const Login: React.FC = () => {
         if (error) throw error;
         
         if (data.user) {
+          const autoApprove = email === 'admin@naver.com' || email === 'galeb76@naver.com';
           // Create student profile
           const { error: profileError } = await supabase
             .from('student_profile')
@@ -102,15 +136,26 @@ export const Login: React.FC = () => {
               {
                 id: data.user.id,
                 name: name || '학생',
+                email: email,
                 birth_date: birthDate || null,
                 current_grade: grade,
                 career_wish: '진로 희망을 작성해주세요.',
-                graduation_date: `${new Date().getFullYear() + (4 - grade)}-02-15`
+                graduation_date: `${new Date().getFullYear() + (4 - grade)}-02-15`,
+                is_approved: autoApprove,
+                is_admin: autoApprove
               }
             ]);
             
           if (profileError) {
             console.error('Profile creation failed:', profileError);
+            throw profileError;
+          }
+
+          if (!autoApprove) {
+            alert('회원가입 신청이 완료되었습니다! 관리자 승인 완료 후 로그인이 가능합니다.');
+            setIsLogin(true);
+            setLoading(false);
+            return;
           }
         }
       }

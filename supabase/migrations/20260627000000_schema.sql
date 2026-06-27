@@ -2,12 +2,15 @@
 create table public.student_profile (
     id uuid references auth.users on delete cascade primary key,
     name text not null,
+    email text, -- 승인 관리를 위한 이메일 보관
     birth_date date,
     current_grade integer not null check (current_grade in (1, 2, 3)),
     current_class integer,
     career_wish text,
     memo text,
     graduation_date date,
+    is_approved boolean default false not null, -- 승인 상태 (false면 로그인 잠금)
+    is_admin boolean default false not null,    -- 관리자 여부
     created_at timestamp with time zone default timezone('utc'::text, now()) not null,
     updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -15,13 +18,13 @@ create table public.student_profile (
 alter table public.student_profile enable row level security;
 
 create policy "Users can view own profile" on public.student_profile
-    for select using (auth.uid() = id);
+    for select using (auth.uid() = id OR (auth.jwt() ->> 'email' = 'admin@naver.com' OR auth.jwt() ->> 'email' = 'galeb76@naver.com'));
 
 create policy "Users can insert own profile" on public.student_profile
     for insert with check (auth.uid() = id);
 
 create policy "Users can update own profile" on public.student_profile
-    for update using (auth.uid() = id);
+    for update using (auth.uid() = id OR (auth.jwt() ->> 'email' = 'admin@naver.com' OR auth.jwt() ->> 'email' = 'galeb76@naver.com'));
 
 -- 2. 내신 성적 (academic_records)
 create table public.academic_records (

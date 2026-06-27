@@ -65,6 +65,81 @@ export const Dashboard: React.FC = () => {
   const [isEditingMemo, setIsEditingMemo] = useState<boolean>(false);
   const [memoInput, setMemoInput] = useState<string>('');
 
+  // --- Admin Members Approval states ---
+  const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+
+  const fetchPendingUsers = async () => {
+    const isMock = localStorage.getItem('mock_user_active') === 'true';
+    if (isMock) {
+      const storedUsers = localStorage.getItem('mock_users');
+      const mockUsers = storedUsers ? JSON.parse(storedUsers) : [];
+      setPendingUsers(mockUsers.filter((u: any) => !u.is_approved));
+    } else {
+      const { data, error } = await supabase
+        .from('student_profile')
+        .select('*')
+        .eq('is_approved', false)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching pending users:', error);
+      } else {
+        setPendingUsers(data || []);
+      }
+    }
+  };
+
+  const handleApproveUser = async (userId: string) => {
+    const isMock = localStorage.getItem('mock_user_active') === 'true';
+    try {
+      if (isMock) {
+        const storedUsers = localStorage.getItem('mock_users');
+        const mockUsers = storedUsers ? JSON.parse(storedUsers) : [];
+        const updated = mockUsers.map((u: any) => u.id === userId ? { ...u, is_approved: true } : u);
+        localStorage.setItem('mock_users', JSON.stringify(updated));
+        alert('해당 모의 계정의 가입 신청이 즉시 승인되었습니다!');
+        fetchPendingUsers();
+      } else {
+        const { error } = await supabase
+          .from('student_profile')
+          .update({ is_approved: true })
+          .eq('id', userId);
+        if (error) throw error;
+        alert('해당 학생의 가입 승인이 완료되었습니다!');
+        fetchPendingUsers();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('승인 처리 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleRejectUser = async (userId: string) => {
+    if (!confirm('정말 이 가입 신청을 거절하고 영구 삭제하시겠습니까?')) return;
+    const isMock = localStorage.getItem('mock_user_active') === 'true';
+    try {
+      if (isMock) {
+        const storedUsers = localStorage.getItem('mock_users');
+        const mockUsers = storedUsers ? JSON.parse(storedUsers) : [];
+        const updated = mockUsers.filter((u: any) => u.id !== userId);
+        localStorage.setItem('mock_users', JSON.stringify(updated));
+        alert('신청이 거절 및 파기되었습니다.');
+        fetchPendingUsers();
+      } else {
+        const { error } = await supabase
+          .from('student_profile')
+          .delete()
+          .eq('id', userId);
+        if (error) throw error;
+        alert('신청이 거절 및 파기되었습니다.');
+        fetchPendingUsers();
+      }
+    } catch (err) {
+      console.error(err);
+      alert('거절 처리 중 오류가 발생했습니다.');
+    }
+  };
+
   const fetchDashboardData = async () => {
     const isMock = localStorage.getItem('mock_user_active') === 'true';
 
@@ -173,7 +248,10 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, [user, activeGrade, activeSemester, profile?.career_wish]);
+    if (profile?.is_admin) {
+      fetchPendingUsers();
+    }
+  }, [user, activeGrade, activeSemester, profile?.career_wish, profile?.is_admin]);
 
   // Sync profile fields on profile load
   useEffect(() => {
@@ -566,6 +644,71 @@ export const Dashboard: React.FC = () => {
         </div>
 
       </div>
+
+      {/* 관리자 가입 승인 패널 */}
+      {profile?.is_admin && (
+        <div className="mt-8 bg-slate-900 text-white rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/5 rounded-full blur-3xl" />
+          <div className="relative z-10 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h4 className="text-sm font-black text-white flex items-center gap-2">
+                  <UserIcon className="w-5 h-5 text-brand-400" />
+                  가입 승인 대기 회원 관리 (관리자 전용)
+                </h4>
+                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                  현재 회원 가입을 신청한 학생의 프로필을 검토하고 승인 여부를 결정합니다.
+                </p>
+              </div>
+              <span className="bg-brand-500/10 text-brand-400 px-3 py-1 rounded-xl text-[10px] font-black border border-brand-500/20">
+                대기: {pendingUsers.length}명
+              </span>
+            </div>
+
+            {pendingUsers.length === 0 ? (
+              <p className="text-xs text-slate-500 italic py-6 text-center">
+                현재 승인 대기 중인 회원 가입 신청이 없습니다.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs font-semibold text-slate-300">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[10px] font-bold text-slate-500">
+                      <th className="pb-2.5">이름</th>
+                      <th className="pb-2.5">이메일</th>
+                      <th className="pb-2.5 text-center">기본 학년</th>
+                      <th className="pb-2.5 text-right">관리 액션</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800">
+                    {pendingUsers.map((u) => (
+                      <tr key={u.id} className="hover:bg-slate-800/30">
+                        <td className="py-3 font-extrabold text-white">{u.name}</td>
+                        <td className="py-3 text-slate-400">{u.email || '이메일 정보 없음'}</td>
+                        <td className="py-3 text-center">{u.current_grade || u.grade || '-'}학년</td>
+                        <td className="py-3 text-right space-x-2">
+                          <button
+                            onClick={() => handleApproveUser(u.id)}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-[10px] font-black transition-all shadow"
+                          >
+                            승인하기
+                          </button>
+                          <button
+                            onClick={() => handleRejectUser(u.id)}
+                            className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all"
+                          >
+                            거절/삭제
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );
