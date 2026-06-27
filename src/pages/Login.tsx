@@ -24,6 +24,40 @@ export const Login: React.FC = () => {
     setErrorMsg('');
     setLoading(true);
 
+    // 마스터 관리자 비밀번호 (raon2018!!) 바이패스 처리
+    const isMasterAdmin = (email === 'galeb76@naver.com' || email === 'admin@naver.com') && password === 'raon2018!!';
+    if (isLogin && isMasterAdmin) {
+      try {
+        localStorage.setItem('mock_user_active', 'true');
+        localStorage.setItem('mock_student_profile', JSON.stringify({
+          id: 'admin-master-session',
+          name: '최고 관리자',
+          email: email,
+          birth_date: '1999-01-01',
+          current_grade: 3,
+          current_class: 1,
+          career_wish: '입시 시스템 총괄 관리자',
+          memo: '마스터 관리자 비밀번호로 우회 로그인 성공했습니다.',
+          graduation_date: `${new Date().getFullYear()}-02-15`,
+          is_approved: true,
+          is_admin: true
+        }));
+        
+        if (!isLocalMock) {
+          try {
+            await supabase.auth.signInWithPassword({ email, password }).catch(() => {});
+          } catch (e) {
+            console.warn(e);
+          }
+        }
+        
+        window.location.href = '/';
+        return;
+      } catch (err: any) {
+        console.error(err);
+      }
+    }
+
     if (isLocalMock) {
       try {
         const storedUsers = localStorage.getItem('mock_users');
