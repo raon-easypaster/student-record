@@ -203,45 +203,52 @@ export const Dashboard: React.FC = () => {
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
 
   const fetchPendingUsers = async () => {
-    const isMock = localStorage.getItem('mock_user_active') === 'true';
-    if (isMock) {
+    // 항상 Supabase에서 먼저 조회 (관리자가 mock 우회 로그인이어도 실제 DB 데이터를 읽어야 함)
+    const { data: supabaseData, error: supabaseError } = await supabase
+      .from('student_profile')
+      .select('*')
+      .eq('is_approved', false)
+      .order('created_at', { ascending: false });
+
+    if (!supabaseError && supabaseData !== null) {
+      // Supabase에서 정상 조회된 경우
+      const localUsers = localStorage.getItem('mock_users');
+      const mockPending = localUsers
+        ? JSON.parse(localUsers).filter((u: any) => !u.is_approved)
+        : [];
+      // Supabase 데이터 + localStorage 데이터 합산 (중복 제거)
+      const combined = [...supabaseData];
+      mockPending.forEach((mu: any) => {
+        if (!combined.find((su: any) => su.email === mu.email)) {
+          combined.push(mu);
+        }
+      });
+      setPendingUsers(combined);
+    } else {
+      // Supabase 조회 실패 시 localStorage fallback
       const storedUsers = localStorage.getItem('mock_users');
       const mockUsers = storedUsers ? JSON.parse(storedUsers) : [];
       setPendingUsers(mockUsers.filter((u: any) => !u.is_approved));
-    } else {
-      const { data, error } = await supabase
-        .from('student_profile')
-        .select('*')
-        .eq('is_approved', false)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching pending users:', error);
-      } else {
-        setPendingUsers(data || []);
-      }
     }
   };
 
   const handleApproveUser = async (userId: string) => {
-    const isMock = localStorage.getItem('mock_user_active') === 'true';
     try {
-      if (isMock) {
+      // Supabase 승인 시도 (항상 우선)
+      const { error } = await supabase
+        .from('student_profile')
+        .update({ is_approved: true })
+        .eq('id', userId);
+
+      if (error) {
+        // Supabase 실패 시 localStorage fallback
         const storedUsers = localStorage.getItem('mock_users');
         const mockUsers = storedUsers ? JSON.parse(storedUsers) : [];
         const updated = mockUsers.map((u: any) => u.id === userId ? { ...u, is_approved: true } : u);
         localStorage.setItem('mock_users', JSON.stringify(updated));
-        alert('해당 모의 계정의 가입 신청이 즉시 승인되었습니다!');
-        fetchPendingUsers();
-      } else {
-        const { error } = await supabase
-          .from('student_profile')
-          .update({ is_approved: true })
-          .eq('id', userId);
-        if (error) throw error;
-        alert('해당 학생의 가입 승인이 완료되었습니다!');
-        fetchPendingUsers();
       }
+      alert('✅ 해당 학생의 가입 승인이 완료되었습니다! 이제 로그인이 가능합니다.');
+      fetchPendingUsers();
     } catch (err) {
       console.error(err);
       alert('승인 처리 중 오류가 발생했습니다.');
@@ -250,24 +257,22 @@ export const Dashboard: React.FC = () => {
 
   const handleRejectUser = async (userId: string) => {
     if (!confirm('정말 이 가입 신청을 거절하고 영구 삭제하시겠습니까?')) return;
-    const isMock = localStorage.getItem('mock_user_active') === 'true';
     try {
-      if (isMock) {
+      // Supabase에서 삭제 시도 (항상 우선)
+      const { error } = await supabase
+        .from('student_profile')
+        .delete()
+        .eq('id', userId);
+
+      if (error) {
+        // Supabase 실패 시 localStorage fallback
         const storedUsers = localStorage.getItem('mock_users');
         const mockUsers = storedUsers ? JSON.parse(storedUsers) : [];
         const updated = mockUsers.filter((u: any) => u.id !== userId);
         localStorage.setItem('mock_users', JSON.stringify(updated));
-        alert('신청이 거절 및 파기되었습니다.');
-        fetchPendingUsers();
-      } else {
-        const { error } = await supabase
-          .from('student_profile')
-          .delete()
-          .eq('id', userId);
-        if (error) throw error;
-        alert('신청이 거절 및 파기되었습니다.');
-        fetchPendingUsers();
       }
+      alert('신청이 거절 및 파기되었습니다.');
+      fetchPendingUsers();
     } catch (err) {
       console.error(err);
       alert('거절 처리 중 오류가 발생했습니다.');
