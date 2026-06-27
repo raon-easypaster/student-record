@@ -2,14 +2,16 @@ import React, { useState } from 'react';
 import { supabase } from '../services/supabase';
 import { useActiveSemester } from '../context/ActiveSemesterContext';
 import { useNavigate } from 'react-router-dom';
-import { GraduationCap, Mail, Lock, User, Calendar, Sparkles } from 'lucide-react';
+import { GraduationCap, Mail, Lock, User, Sparkles } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [isLogin, setIsLogin] = useState<boolean>(true);
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [name, setName] = useState<string>('');
-  const [birthDate, setBirthDate] = useState<string>('');
+  const [birthYear, setBirthYear] = useState<number>(2010);
+  const [birthMonth, setBirthMonth] = useState<number>(1);
+  const [birthDay, setBirthDay] = useState<number>(1);
   const [grade, setGrade] = useState<number>(1);
   const [errorMsg, setErrorMsg] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
@@ -23,6 +25,8 @@ export const Login: React.FC = () => {
     e.preventDefault();
     setErrorMsg('');
     setLoading(true);
+
+    const targetBirthDate = `${birthYear}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`;
 
     // 마스터 관리자 비밀번호 (raon2018!!) 바이패스 처리
     const isMasterAdmin = (email === 'galeb76@naver.com' || email === 'admin@naver.com') && password === 'raon2018!!';
@@ -101,7 +105,7 @@ export const Login: React.FC = () => {
             password,
             name: name || '학생',
             grade: grade || 1,
-            birthDate,
+            birthDate: targetBirthDate,
             is_approved: autoApprove,
             is_admin: autoApprove
           };
@@ -171,7 +175,7 @@ export const Login: React.FC = () => {
                 id: data.user.id,
                 name: name || '학생',
                 email: email,
-                birth_date: birthDate || null,
+                birth_date: targetBirthDate || null,
                 current_grade: grade,
                 career_wish: '진로 희망을 작성해주세요.',
                 graduation_date: `${new Date().getFullYear() + (4 - grade)}-02-15`,
@@ -206,11 +210,12 @@ export const Login: React.FC = () => {
 
   const handleDemoLogin = () => {
     localStorage.setItem('mock_user_active', 'true');
+    const targetBirthDate = `${birthYear}-${String(birthMonth).padStart(2, '0')}-${String(birthDay).padStart(2, '0')}`;
     // Save a mock profile
     const mockProfile = {
       id: 'mock-user-id',
       name: name || '김대입',
-      birth_date: birthDate || '2008-03-15',
+      birth_date: targetBirthDate,
       current_grade: grade,
       current_class: 3,
       career_wish: '소프트웨어 개발자 / AI 연구원',
@@ -303,18 +308,42 @@ export const Login: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-400 mb-1.5 ml-1">생년월일</label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-500" />
-                    <input
-                      type="date"
-                      required
-                      value={birthDate}
-                      onChange={(e) => setBirthDate(e.target.value)}
-                      className="w-full bg-slate-950/80 border border-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl py-3 pl-10 pr-4 text-slate-200 text-xs font-medium outline-none transition-all"
-                    />
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* 년도 드롭다운 */}
+                    <select
+                      value={birthYear}
+                      onChange={(e) => setBirthYear(Number(e.target.value))}
+                      className="w-full bg-slate-950/80 border border-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl py-3 px-3.5 text-slate-200 text-xs font-semibold outline-none transition-all cursor-pointer"
+                    >
+                      {[2010, 2009, 2008, 2007, 2006, 2005, 2004, 2003, 2002, 2001, 2000, 1999, 1998, 1997, 1996, 1995, 1994, 1993, 1992, 1991, 1990, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020].map(y => (
+                        <option key={y} value={y} className="bg-slate-900">{y}년</option>
+                      ))}
+                    </select>
+
+                    {/* 월 드롭다운 */}
+                    <select
+                      value={birthMonth}
+                      onChange={(e) => setBirthMonth(Number(e.target.value))}
+                      className="w-full bg-slate-950/80 border border-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl py-3 px-3.5 text-slate-200 text-xs font-semibold outline-none transition-all cursor-pointer"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                        <option key={m} value={m} className="bg-slate-900">{m}월</option>
+                      ))}
+                    </select>
+
+                    {/* 일 드롭다운 */}
+                    <select
+                      value={birthDay}
+                      onChange={(e) => setBirthDay(Number(e.target.value))}
+                      className="w-full bg-slate-950/80 border border-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl py-3 px-3.5 text-slate-200 text-xs font-semibold outline-none transition-all cursor-pointer"
+                    >
+                      {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                        <option key={d} value={d} className="bg-slate-900">{d}일</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -323,11 +352,11 @@ export const Login: React.FC = () => {
                   <select
                     value={grade}
                     onChange={(e) => setGrade(Number(e.target.value))}
-                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl py-3 px-4 text-slate-200 text-xs font-medium outline-none transition-all"
+                    className="w-full bg-slate-950/80 border border-slate-800 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 rounded-xl py-3 px-4 text-slate-200 text-xs font-medium outline-none transition-all cursor-pointer"
                   >
-                    <option value={1}>1학년 (신입생)</option>
-                    <option value={2}>2학년</option>
-                    <option value={3}>3학년 (수험생)</option>
+                    <option value={1} className="bg-slate-900">1학년 (신입생)</option>
+                    <option value={2} className="bg-slate-900">2학년</option>
+                    <option value={3} className="bg-slate-900">3학년 (수험생)</option>
                   </select>
                 </div>
               </div>
