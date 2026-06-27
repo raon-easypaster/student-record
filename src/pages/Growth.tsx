@@ -43,12 +43,71 @@ interface Activity {
   activity_date?: string | null;
 }
 
+interface SimulatedSubject {
+  id: string;
+  name: string;
+  credit: number;
+  grade: number;
+}
+
 export const Growth: React.FC = () => {
   const { user } = useActiveSemester();
   const [academicList, setAcademicList] = useState<AcademicRecord[]>([]);
   const [mockList, setMockList] = useState<MockRecord[]>([]);
   const [activityList, setActivityList] = useState<Activity[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+
+  // --- Grade Simulator states ---
+  const [simulatedList, setSimulatedList] = useState<SimulatedSubject[]>([
+    { id: 's1', name: '가상 과목 A', credit: 4, grade: 1 },
+    { id: 's2', name: '가상 과목 B', credit: 3, grade: 2 }
+  ]);
+  const [newSimName, setNewSimName] = useState<string>('');
+  const [newSimCredit, setNewSimCredit] = useState<number>(3);
+  const [newSimGrade, setNewSimGrade] = useState<number>(1);
+
+  const handleAddSimSubject = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSimName.trim()) {
+      alert('과목명을 입력해 주십시오.');
+      return;
+    }
+    const newSub: SimulatedSubject = {
+      id: 'sim-' + Date.now(),
+      name: newSimName,
+      credit: newSimCredit,
+      grade: newSimGrade
+    };
+    setSimulatedList([...simulatedList, newSub]);
+    setNewSimName('');
+  };
+
+  const handleRemoveSimSubject = (id: string) => {
+    setSimulatedList(simulatedList.filter(s => s.id !== id));
+  };
+
+  const getActualAverage = () => {
+    const graded = academicList.filter(r => r.rank_rating !== null && r.rank_rating > 0);
+    if (graded.length === 0) return 0;
+    const totalCredits = graded.reduce((sum, r) => sum + r.credit_units, 0);
+    const totalScore = graded.reduce((sum, r) => sum + (r.rank_rating! * r.credit_units), 0);
+    return Number((totalScore / totalCredits).toFixed(2));
+  };
+
+  const getSimulatedAverageVal = () => {
+    const graded = academicList.filter(r => r.rank_rating !== null && r.rank_rating > 0);
+    const actualCredits = graded.reduce((sum, r) => sum + r.credit_units, 0);
+    const actualScore = graded.reduce((sum, r) => sum + (r.rank_rating! * r.credit_units), 0);
+
+    const simCredits = simulatedList.reduce((sum, s) => sum + s.credit, 0);
+    const simScore = simulatedList.reduce((sum, s) => sum + (s.grade * s.credit), 0);
+
+    const totalCredits = actualCredits + simCredits;
+    const totalScore = actualScore + simScore;
+
+    if (totalCredits === 0) return 0;
+    return Number((totalScore / totalCredits).toFixed(2));
+  };
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -161,20 +220,77 @@ export const Growth: React.FC = () => {
       { grade: 3, semester: 2, label: '3-2' }
     ];
 
-    return semKeys.map((k) => {
+    // 1. Calculate actual semester averages
+    const actualData = semKeys.map((k) => {
       const semActs = academicList.filter(
         (a) => a.grade === k.grade && a.semester === k.semester && a.rank_rating !== null
       );
       if (semActs.length === 0) {
-        return { name: k.label, GPA: null };
+        return { name: k.label, GPA: null, grade: k.grade, semester: k.semester };
       }
       const totalCredits = semActs.reduce((sum, a) => sum + a.credit_units, 0);
       const weightedSum = semActs.reduce((sum, a) => sum + (a.rank_rating! * a.credit_units), 0);
       return {
         name: k.label,
-        GPA: Number((weightedSum / totalCredits).toFixed(2))
+        GPA: Number((weightedSum / totalCredits).toFixed(2)),
+        grade: k.grade,
+        semester: k.semester
       };
-    }).filter(d => d.GPA !== null); // Only show semesters with data
+    });
+
+    const activeActual = actualData.filter(d => d.GPA !== null);
+    if (activeActual.length === 0) {
+      return [];
+    }
+
+    // 2. Map actual cumulative GPA transitions
+    const cumulativeData = activeActual.map((d, index) => {
+      const targetSemesters = activeActual.slice(0, index + 1);
+      const allSubjects = academicList.filter(a => 
+        targetSemesters.some(ts => ts.grade === a.grade && ts.semester === a.semester) &&
+        a.rank_rating !== null && a.rank_rating > 0
+      );
+      
+      const totalCredits = allSubjects.reduce((sum, a) => sum + a.credit_units, 0);
+      const weightedSum = allSubjects.reduce((sum, a) => sum + (a.rank_rating! * a.credit_units), 0);
+      const cumulativeGPA = Number((weightedSum / totalCredits).toFixed(2));
+
+      return {
+        name: d.name,
+        '실제 누적 내신': cumulativeGPA,
+        '시뮬레이션 내신': cumulativeGPA
+      };
+    });
+
+    // 3. Append forecasted semester
+    const lastActive = activeActual[activeActual.length - 1];
+    let nextGrade = lastActive.grade;
+    let nextSemester = lastActive.semester + 1;
+    if (nextSemester > 2) {
+      nextGrade += 1;
+      nextSemester = 1;
+    }
+
+    if (nextGrade <= 3 && simulatedList.length > 0) {
+      const graded = academicList.filter(r => r.rank_rating !== null && r.rank_rating > 0);
+      const actualCredits = graded.reduce((sum, r) => sum + r.credit_units, 0);
+      const actualScore = graded.reduce((sum, r) => sum + (r.rank_rating! * r.credit_units), 0);
+
+      const simCredits = simulatedList.reduce((sum, s) => sum + s.credit, 0);
+      const simScore = simulatedList.reduce((sum, s) => sum + (s.grade * s.credit), 0);
+
+      const totalCredits = actualCredits + simCredits;
+      const totalScore = actualScore + simScore;
+      const simCumulativeGPA = totalCredits > 0 ? Number((totalScore / totalCredits).toFixed(2)) : 0;
+
+      cumulativeData.push({
+        name: `${nextGrade}-${nextSemester} (예상)`,
+        '실제 누적 내신': null as any,
+        '시뮬레이션 내신': simCumulativeGPA
+      });
+    }
+
+    return cumulativeData;
   };
 
   // --- 모의고사 추이 데이터 ---
@@ -242,14 +358,15 @@ export const Growth: React.FC = () => {
 
     // Add GPA summaries
     gpaData.forEach((d) => {
+      if (d['실제 누적 내신'] === null || d.name.includes('예상')) return;
       const [g, s] = d.name.split('-').map(Number);
       timelineEvents.push({
         id: `gpa-${d.name}`,
         grade: g,
         semester: s,
         type: 'gpa',
-        title: `내신 종합 평점 달성`,
-        description: `학기말 이수단위 가중 평균 성적 ${d.GPA}등급 확정`
+        title: `내신 종합 누적 평점 달성`,
+        description: `해당 학기까지의 전체 누적 평균 내신 성적 ${d['실제 누적 내신']}등급 달성 및 확정`
       });
     });
 
@@ -319,11 +436,20 @@ export const Growth: React.FC = () => {
                     <Legend />
                     <Line
                       type="monotone"
-                      dataKey="GPA"
-                      name="종합 평점"
+                      dataKey="실제 누적 내신"
+                      name="실제 누적 내신"
                       stroke="#0284c7"
                       strokeWidth={3}
                       activeDot={{ r: 8 }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="시뮬레이션 내신"
+                      name="시뮬레이션 반영 예측"
+                      stroke="#818cf8"
+                      strokeWidth={2.5}
+                      strokeDasharray="5 5"
+                      activeDot={{ r: 6 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>
@@ -432,6 +558,162 @@ export const Growth: React.FC = () => {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* 목표 성적 시뮬레이터 섹션 */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6 mt-8">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-indigo-500 animate-pulse" />
+                  목표 내신 성적 시뮬레이터 (Target Grade Simulator)
+                </h4>
+                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                  현재까지 등록된 내신 정보에 다음 학기 가상 과목 등급을 임의 입력하여 종합 누적 등급 평점 변화를 시뮬레이션하십시오.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              
+              {/* 좌측 1: 과목 추가 입력 폼 */}
+              <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-4">
+                <p className="text-xs font-black text-slate-800">📋 다음 학기 가상 과목 등록</p>
+                <form onSubmit={handleAddSimSubject} className="space-y-3.5 text-xs font-semibold text-slate-700">
+                  <div className="space-y-1">
+                    <label className="text-slate-500 font-bold">가상 과목명</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="예: 미적분, 물리Ⅱ 등"
+                      value={newSimName}
+                      onChange={(e) => setNewSimName(e.target.value)}
+                      className="w-full bg-white border border-slate-200 p-2.5 rounded-xl outline-none focus:border-indigo-500 font-bold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-slate-500 font-bold">이수 단위</label>
+                      <select
+                        value={newSimCredit}
+                        onChange={(e) => setNewSimCredit(Number(e.target.value))}
+                        className="w-full bg-white border border-slate-200 p-2.5 rounded-xl outline-none focus:border-indigo-500 font-bold"
+                      >
+                        {[1, 2, 3, 4, 5].map(c => (
+                          <option key={c} value={c}>{c}단위</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate-500 font-bold">목표 등급</label>
+                      <select
+                        value={newSimGrade}
+                        onChange={(e) => setNewSimGrade(Number(e.target.value))}
+                        className="w-full bg-white border border-slate-200 p-2.5 rounded-xl outline-none focus:border-indigo-500 font-bold"
+                      >
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(g => (
+                          <option key={g} value={g}>{g}등급</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-2.5 rounded-xl shadow-md shadow-indigo-900/10 transition-all"
+                  >
+                    가상 과목 시뮬레이션 추가
+                  </button>
+                </form>
+              </div>
+
+              {/* 중앙 2: 추가된 과목 리스트 피드 */}
+              <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 flex flex-col justify-between">
+                <div className="space-y-3">
+                  <p className="text-xs font-black text-slate-800">💡 시뮬레이션 반영 과목 리스트</p>
+                  {simulatedList.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic text-center py-10">과목을 등록하여 변화를 예측해 보세요.</p>
+                  ) : (
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                      {simulatedList.map(s => (
+                        <div key={s.id} className="flex items-center justify-between text-xs p-2.5 bg-white rounded-xl border border-slate-100 shadow-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded text-[10px] font-black">
+                              {s.credit}단위
+                            </span>
+                            <span className="font-extrabold text-slate-700">{s.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-rose-600">{s.grade}등급</span>
+                            <button
+                              onClick={() => handleRemoveSimSubject(s.id)}
+                              className="text-red-400 hover:text-red-600 font-bold transition-colors"
+                            >
+                              삭제
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 font-semibold mt-2.5">
+                  ※ 시뮬레이션 과목은 우측의 누적 내신 및 그래프상 보라색 점선(예상 포인트)에 실시간 합성되어 연출됩니다.
+                </p>
+              </div>
+
+              {/* 우측 3: 누적 내신 가치 요약 (실시간) */}
+              <div className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white p-6 rounded-2xl border border-indigo-950 shadow-xl flex flex-col justify-between">
+                <div className="space-y-4">
+                  <span className="inline-flex bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider">
+                    실시간 시뮬레이션 결과
+                  </span>
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-slate-300 font-bold">현재 실제 누적 내신</p>
+                      <p className="text-2xl font-black text-slate-300">{getActualAverage() || '-'} 등급</p>
+                    </div>
+                    <div className="space-y-0.5 border-l border-white/10 pl-4">
+                      <p className="text-[10px] text-indigo-300 font-bold">예상 시뮬레이션 누적</p>
+                      <p className="text-2xl font-black text-indigo-400">{getSimulatedAverageVal() || '-'} 등급</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
+                  <span className="text-slate-300 font-semibold">내신 등급 변동량</span>
+                  {getActualAverage() && getSimulatedAverageVal() ? (
+                    (() => {
+                      const diff = getActualAverage() - getSimulatedAverageVal();
+                      if (diff > 0) {
+                        return (
+                          <span className="bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-lg font-black">
+                            ▲ {diff.toFixed(2)} 등급 향상!
+                          </span>
+                        );
+                      } else if (diff < 0) {
+                        return (
+                          <span className="bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-lg font-black">
+                            ▼ {Math.abs(diff).toFixed(2)} 등급 하락
+                          </span>
+                        );
+                      }
+                      return (
+                        <span className="bg-white/10 text-white px-2 py-0.5 rounded-lg font-black">
+                          변동 없음
+                        </span>
+                      );
+                    })()
+                  ) : (
+                    <span className="text-slate-400 italic">계산 대기 중</span>
+                  )}
+                </div>
+              </div>
+
+            </div>
           </div>
         </>
       )}
