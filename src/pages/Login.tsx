@@ -186,6 +186,7 @@ export const Login: React.FC = () => {
             
           if (profileError) {
             console.error('Profile creation failed:', profileError);
+            alert('학생 정보 등록(프로필 생성)에 실패했습니다. Supabase DB 마이그레이션이 작동 완료되었는지 확인해 주십시오.\n에러 내용: ' + profileError.message);
             throw profileError;
           }
 
