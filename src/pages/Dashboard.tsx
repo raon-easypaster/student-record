@@ -18,6 +18,7 @@ import {
   Globe
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { AdminStudentModal } from '../components/AdminStudentModal';
 
 interface Activity {
   id: string;
@@ -199,8 +200,10 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  // --- Admin Members Approval states ---
+  // --- Admin Members Approval & Management states ---
   const [pendingUsers, setPendingUsers] = useState<any[]>([]);
+  const [approvedUsers, setApprovedUsers] = useState<any[]>([]);
+  const [selectedAdminStudentId, setSelectedAdminStudentId] = useState<string | null>(null);
 
   const fetchPendingUsers = async () => {
     // 항상 Supabase에서 먼저 조회 (관리자가 mock 우회 로그인이어도 실제 DB 데이터를 읽어야 함 - RLS 우회를 위해 RPC 사용)
@@ -225,6 +228,23 @@ export const Dashboard: React.FC = () => {
       const storedUsers = localStorage.getItem('mock_users');
       const mockUsers = storedUsers ? JSON.parse(storedUsers) : [];
       setPendingUsers(mockUsers.filter((u: any) => !u.is_approved));
+      setApprovedUsers(mockUsers.filter((u: any) => u.is_approved));
+    }
+
+    // 승인 완료된 사용자 조회 (관리자용)
+    const { data: approvedData, error: approvedError } = await supabase.rpc('get_approved_users');
+    if (!approvedError && approvedData !== null) {
+      const localUsers = localStorage.getItem('mock_users');
+      const mockApproved = localUsers
+        ? JSON.parse(localUsers).filter((u: any) => u.is_approved)
+        : [];
+      const combinedApproved = [...approvedData];
+      mockApproved.forEach((mu: any) => {
+        if (!combinedApproved.find((su: any) => su.email === mu.email)) {
+          combinedApproved.push(mu);
+        }
+      });
+      setApprovedUsers(combinedApproved);
     }
   };
 
@@ -1081,63 +1101,104 @@ export const Dashboard: React.FC = () => {
 
       {/* 관리자 가입 승인 패널 */}
       {profile?.is_admin && (
-        <div className="mt-8 bg-slate-900 text-white rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/5 rounded-full blur-3xl" />
-          <div className="relative z-10 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <div>
-                <h4 className="text-sm font-black text-white flex items-center gap-2">
-                  <UserIcon className="w-5 h-5 text-brand-400" />
-                  가입 승인 대기 회원 관리 (관리자 전용)
-                </h4>
-                <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                  현재 회원 가입을 신청한 학생의 프로필을 검토하고 승인 여부를 결정합니다.
-                </p>
+        <div className="mt-8 space-y-6">
+          <div className="bg-slate-900 text-white rounded-3xl p-6 border border-slate-800 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-brand-500/5 rounded-full blur-3xl" />
+            <div className="relative z-10 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div>
+                  <h4 className="text-sm font-black text-white flex items-center gap-2">
+                    <UserIcon className="w-5 h-5 text-brand-400" />
+                    가입 승인 대기 회원 관리 (관리자 전용)
+                  </h4>
+                  <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                    현재 회원 가입을 신청한 학생의 프로필을 검토하고 승인 여부를 결정합니다.
+                  </p>
+                </div>
+                <span className="bg-brand-500/10 text-brand-400 px-3 py-1 rounded-xl text-[10px] font-black border border-brand-500/20">
+                  대기: {pendingUsers.length}명
+                </span>
               </div>
-              <span className="bg-brand-500/10 text-brand-400 px-3 py-1 rounded-xl text-[10px] font-black border border-brand-500/20">
-                대기: {pendingUsers.length}명
-              </span>
-            </div>
 
-            {pendingUsers.length === 0 ? (
-              <p className="text-xs text-slate-500 italic py-6 text-center">
-                현재 승인 대기 중인 회원 가입 신청이 없습니다.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs font-semibold text-slate-300">
-                  <thead>
-                    <tr className="border-b border-slate-800 text-[10px] font-bold text-slate-500">
-                      <th className="pb-2.5">이름</th>
-                      <th className="pb-2.5">이메일</th>
-                      <th className="pb-2.5 text-center">기본 학년</th>
-                      <th className="pb-2.5 text-right">관리 액션</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800">
-                    {pendingUsers.map((u) => (
-                      <tr key={u.id} className="hover:bg-slate-800/30">
-                        <td className="py-3 font-extrabold text-white">{u.name}</td>
-                        <td className="py-3 text-slate-400">{u.email || '이메일 정보 없음'}</td>
-                        <td className="py-3 text-center">{u.current_grade || u.grade || '-'}학년</td>
-                        <td className="py-3 text-right space-x-2">
-                          <button
-                            onClick={() => handleApproveUser(u.id)}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-[10px] font-black transition-all shadow"
-                          >
-                            승인하기
-                          </button>
-                          <button
-                            onClick={() => handleRejectUser(u.id)}
-                            className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all"
-                          >
-                            거절/삭제
-                          </button>
-                        </td>
+              {pendingUsers.length === 0 ? (
+                <p className="text-xs text-slate-500 italic py-6 text-center">
+                  현재 승인 대기 중인 회원 가입 신청이 없습니다.
+                </p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs font-semibold text-slate-300">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-[10px] font-bold text-slate-500">
+                        <th className="pb-2.5">이름</th>
+                        <th className="pb-2.5">이메일</th>
+                        <th className="pb-2.5 text-center">기본 학년</th>
+                        <th className="pb-2.5 text-right">관리 액션</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800">
+                      {pendingUsers.map((u) => (
+                        <tr key={u.id} className="hover:bg-slate-800/30">
+                          <td className="py-3 font-extrabold text-white">{u.name}</td>
+                          <td className="py-3 text-slate-400">{u.email || '이메일 정보 없음'}</td>
+                          <td className="py-3 text-center">{u.current_grade || u.grade || '-'}학년</td>
+                          <td className="py-3 text-right space-x-2">
+                            <button
+                              onClick={() => handleApproveUser(u.id)}
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-[10px] font-black transition-all shadow"
+                            >
+                              승인하기
+                            </button>
+                            <button
+                              onClick={() => handleRejectUser(u.id)}
+                              className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all"
+                            >
+                              거절/삭제
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 가입 완료 회원 관리 */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3 text-slate-800">
+                <CheckSquare className="w-6 h-6 text-green-500" />
+                <h2 className="text-xl font-bold">가입 완료 회원 관리</h2>
+              </div>
+              <div className="bg-slate-100 text-slate-600 px-4 py-1.5 rounded-full text-sm font-medium">
+                가입: {approvedUsers.length}명
+              </div>
+            </div>
+            
+            {approvedUsers.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-slate-400 py-12 text-sm">
+                가입이 승인된 학생이 없습니다.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {approvedUsers.map(u => (
+                  <div key={u.id} className="bg-slate-50 rounded-2xl p-4 flex items-center justify-between border border-slate-200 hover:border-brand-200 transition-colors">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-slate-800">{u.name}</h3>
+                        <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">{u.current_grade}학년</span>
+                      </div>
+                      <p className="text-sm text-slate-500 mt-1">{u.email}</p>
+                    </div>
+                    <button 
+                      onClick={() => setSelectedAdminStudentId(u.id)}
+                      className="bg-white border border-slate-200 hover:border-brand-500 hover:text-brand-600 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold transition-colors"
+                    >
+                      상세 보기
+                    </button>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -1313,6 +1374,13 @@ export const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
+      )}
+      {/* Admin Student Details Modal */}
+      {selectedAdminStudentId && (
+        <AdminStudentModal 
+          studentId={selectedAdminStudentId} 
+          onClose={() => setSelectedAdminStudentId(null)} 
+        />
       )}
     </div>
   );
