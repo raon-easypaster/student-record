@@ -5,7 +5,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { searchUniversityAdmission } from '../services/search';
 import type { SearchResult } from '../services/search';
-import { analyzeUniversityMatch, generateFinalAdmissionReport } from '../services/gemini';
+import { analyzeUniversityMatch, generateFinalAdmissionReport, generatePersonalBranding } from '../services/gemini';
 import {
   Search,
   Sparkles,
@@ -52,7 +52,42 @@ interface CareerGoal {
 
 export const University: React.FC = () => {
   const { activeGrade, activeSemester, user, profile } = useActiveSemester();
-  const [subTab, setSubTab] = useState<'analyze' | 'history' | 'compare' | 'finalReport'>('analyze');
+  const [subTab, setSubTab] = useState<'analyze' | 'history' | 'compare' | 'finalReport' | 'branding'>('analyze');
+
+  // Personal Branding states
+  const [brandingData, setBrandingData] = useState<any>(null);
+  const [generatingBranding, setGeneratingBranding] = useState<boolean>(false);
+
+  const handleGenerateBranding = async () => {
+    setGeneratingBranding(true);
+    try {
+      const isMock = localStorage.getItem('mock_user_active') === 'true';
+      let loadedActs = [];
+      let loadedHistory = [];
+
+      if (isMock) {
+        const storedActs = localStorage.getItem('mock_activities');
+        loadedActs = storedActs ? JSON.parse(storedActs) : [];
+        
+        const storedHistory = localStorage.getItem('mock_target_universities');
+        loadedHistory = storedHistory ? JSON.parse(storedHistory) : [];
+      } else {
+        const { data: acts } = await supabase.from('activities').select('*').eq('student_id', user?.id);
+        loadedActs = acts || [];
+
+        const { data: hist } = await supabase.from('target_universities').select('*').eq('student_id', user?.id);
+        loadedHistory = hist || [];
+      }
+
+      const branding = await generatePersonalBranding(loadedActs, loadedHistory);
+      setBrandingData(branding);
+    } catch (err) {
+      console.error(err);
+      alert('퍼스널 브랜딩 분석 중 오류가 발생했습니다.');
+    } finally {
+      setGeneratingBranding(false);
+    }
+  };
 
   const [univName, setUnivName] = useState<string>('서울대학교');
   const [deptName, setDeptName] = useState<string>('컴퓨터공학부');
@@ -337,6 +372,12 @@ export const University: React.FC = () => {
     fetchUniversityData();
   }, [user]);
 
+  useEffect(() => {
+    if (subTab === 'branding' && !brandingData) {
+      handleGenerateBranding();
+    }
+  }, [subTab]);
+
   // --- AI 진학 분석 & 검색 실행 ---
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -589,6 +630,18 @@ export const University: React.FC = () => {
         >
           <Award className="w-4 h-4 text-indigo-600" />
           3개년 최종 입시 정리
+        </button>
+
+        <button
+          onClick={() => setSubTab('branding')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            subTab === 'branding'
+              ? 'bg-white text-slate-800 shadow-sm'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-purple-600 animate-pulse" />
+          나만의 퍼스널 브랜딩
         </button>
       </div>
 
@@ -1337,6 +1390,108 @@ export const University: React.FC = () => {
                   ※ 본 보고서는 학생의 누적 학생부 정보를 바탕으로 한 스토리라인 설계표입니다. 공식 제출 자소서/면접 전략 수립 시에는 학교 선생님 및 대학 입학처의 세부 지침을 필히 확인하시기 바랍니다.
                 </div>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {subTab === 'branding' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+            <div>
+              <h3 className="text-sm font-black text-slate-800">✨ AI 학생부 퍼스널 브랜딩 컨셉 컨설턴트</h3>
+              <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                누적된 생기부 활동과 진로 희망 데이터를 바탕으로, 입학사정관을 매료시킬 학생만의 독자적인 핵심 브랜딩 컨셉 3가지와 자소서/면접용 추천 스토리라인을 제안합니다.
+              </p>
+            </div>
+            {brandingData && (
+              <button
+                onClick={handleGenerateBranding}
+                disabled={generatingBranding}
+                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                컨셉 재분석 실행
+              </button>
+            )}
+          </div>
+
+          {generatingBranding ? (
+            <div className="bg-white rounded-3xl p-16 border border-slate-100 shadow-sm flex flex-col items-center justify-center space-y-4">
+              <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+              <p className="text-xs font-black text-slate-800">3개년 누적 학생부 데이터 종합 분석 중...</p>
+              <p className="text-[10px] text-slate-400 font-semibold">학생만을 위한 독자적인 융합 키워드를 도출하고 있습니다. 잠시만 기다려 주십시오.</p>
+            </div>
+          ) : !brandingData ? (
+            <div className="bg-white rounded-3xl p-16 border border-slate-100 shadow-sm flex flex-col items-center justify-center text-center space-y-4">
+              <div className="w-16 h-16 bg-purple-50 rounded-full flex items-center justify-center text-purple-600 text-2xl font-black shadow-inner">
+                🔮
+              </div>
+              <div>
+                <p className="text-sm font-black text-slate-800">나만의 컨셉 브랜딩 분석을 시작하십시오</p>
+                <p className="text-xs text-slate-400 font-semibold mt-1">
+                  생기부 활동 및 진로 히스토리 데이터 전체를 융합하여 핵심 컨셉 키워드를 분석합니다.
+                </p>
+              </div>
+              <button
+                onClick={handleGenerateBranding}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-6 py-3 rounded-2xl shadow-lg shadow-indigo-900/10 transition-all flex items-center gap-1.5"
+              >
+                <Sparkles className="w-4 h-4 animate-pulse" />
+                AI 퍼스널 브랜딩 분석 시작
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              
+              {/* 핵심 브랜딩 키워드 3개 가로 그리드 카드 */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {brandingData.branding_keywords.map((b: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="bg-gradient-to-br from-slate-900 via-indigo-950/95 to-slate-900 text-white rounded-3xl p-6 border border-indigo-900/30 shadow-xl relative overflow-hidden group hover:scale-[1.02] transition-all duration-300"
+                  >
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/10 rounded-full blur-2xl group-hover:bg-purple-500/20 transition-all duration-300" />
+                    
+                    <div className="space-y-4 relative z-10">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 flex items-center justify-center font-black text-xs">
+                          {idx + 1}
+                        </span>
+                        <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">나만의 컨셉 키워드</span>
+                      </div>
+                      
+                      <h4 className="text-xs font-black text-white leading-relaxed min-h-12 border-b border-indigo-950 pb-2.5">
+                        "{b.keyword}"
+                      </h4>
+                      
+                      <div className="space-y-2 text-[10.5px] leading-relaxed">
+                        <p className="text-slate-300 font-semibold">
+                          <span className="text-brand-400 font-black block mb-0.5">🔍 도출 근거 (생기부 분석)</span>
+                          {b.reason}
+                        </p>
+                        <p className="text-slate-400 font-medium">
+                          <span className="text-emerald-400 font-black block mb-0.5 mt-2">💡 자소서/면접 스토리라인 가이드</span>
+                          {b.storyline}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 하단 융합 총평 가이드 */}
+              <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-3 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b from-purple-500 to-indigo-600" />
+                <h4 className="text-xs font-black text-slate-800 flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  종합 스토리라인 전개 & 학생부종합전형 전공 적합성 추천
+                </h4>
+                <p className="text-xs text-slate-600 font-semibold leading-relaxed pl-1 whitespace-pre-line font-medium">
+                  {brandingData.synthesis_storyline_guide}
+                </p>
+              </div>
+
             </div>
           )}
         </div>

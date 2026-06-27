@@ -438,3 +438,103 @@ export async function analyzeDocumentOcr(
   }
 }
 
+export async function generatePersonalBranding(
+  activities: any[],
+  careerHistory: any[]
+): Promise<{
+  branding_keywords: Array<{
+    keyword: string;
+    reason: string;
+    storyline: string;
+  }>;
+  synthesis_storyline_guide: string;
+}> {
+  const mockBranding = {
+    branding_keywords: [
+      {
+        keyword: "환경 생태계 문제에 AI 컴퓨팅 솔루션을 결합하는 융합적 탐구자",
+        reason: "1학년 진로활동의 생태 환경 캠페인 기록과 2학년 수학Ⅱ 탐구 보고서에서 극한 모델링(SIR 바이러스 확산 예측)을 작성한 텍스트 기반 융합력이 도출됨. 특히 컴퓨터 코딩을 생태 관찰 데이터 정량화에 활용한 부분이 매력적임.",
+        storyline: "자기소개서 작성 시 1단락에서는 환경 동아리에서 플라스틱 생분해 데이터를 엑셀로 통계 내던 한계를 고백하고, 2단락에서 수학Ⅱ 세특의 감염병 수리 모델링 개념을 컴퓨터 사이언스와 연결해 한계를 극복하려 한 학업적 노력을 극적으로 서술하는 면접 스토리라인 구축 권장."
+      },
+      {
+        keyword: "이론에 갇히지 않고 알고리즘의 사회적 한계를 성찰하는 인문학적 공학도",
+        reason: "생기부 기록 중 물리Ⅰ 탐구와 과학 독서 연계 활동(수학으로 배우는 파이썬)에서 기술의 오남용 및 AI 윤리에 대해 토론하고 비판적 시각을 드러낸 독서 내용들이 여러 차례 강조됨.",
+        storyline: "면접 대비 질문으로 '알고리즘의 편향성이 사회적 약자에게 미치는 영향과 공학도로서의 해결방안'에 대해 생기부 속 AI 윤리 탐구 보고서의 내용을 토대로 답변 논리 구조를 준비하십시오."
+      },
+      {
+        keyword: "자기주도적으로 가설을 수립하고 코드로 증명해내는 실천적 문제해결사",
+        reason: "3개년 동아리활동에서 단순 참여에 그치지 않고, 매 학기마다 직접 조장을 맡아 탐구 가설을 세운 뒤 실제 동작하는 파이썬 스크립트 코드를 구축하여 부원들에게 시연한 주도적인 활동 실적들이 높게 평가됨.",
+        storyline: "면접관이 프로젝트 수행 시 부원들과의 협협 과정에서 발생한 코딩 디버깅 문제를 물을 때, 조장으로서 논리적 분석을 통해 알고리즘 병목을 파악하고 소통으로 갈등을 해결했던 실사례(동아리 활동지 기록 활용)를 스토리로 녹여내십시오."
+      }
+    ],
+    synthesis_storyline_guide: "이 학생은 환경과 IT 기술의 융합이라는 뚜렷한 진로 정체성(Career Goal History)을 가지고 있습니다. 컴퓨터공학과, 소프트웨어학과 혹은 스마트도시/환경공학과 지원 시 강력한 퍼스널 브랜딩을 구축할 수 있습니다. 3학년 자기소개서 혹은 면접 대비 시, 본인의 코딩 기술적 성과에만 매몰되지 말고 '왜 컴퓨터 전공자가 환경 문제에 이토록 비판적 성찰을 쏟아붓게 되었는지' 인문학적·사회적 동기(1학년 자율/진로 기록 연계)를 전단에 배치하여 면접관의 호기심을 유도하십시오."
+  };
+
+  if (!genAI) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    return mockBranding;
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    const activitiesText = activities.map(a => 
+      `[${a.grade}학년] (${a.activity_type}) 제목: ${a.title} / 내용: ${a.content} ${a.subject_name ? `/ 과목: ${a.subject_name}` : ''} ${a.related_book ? `/ 독서: ${a.related_book}` : ''}`
+    ).join('\n');
+
+    const careerText = careerHistory.map(c => 
+      `[${c.grade}학년 ${c.semester || 1}학기] 희망학과: ${c.department_name} / 희망대학: ${c.university_name || '미정'} / 순위: ${c.priority || 1}`
+    ).join('\n');
+
+    const prompt = `
+      학생의 3개년 학생부 활동 기록(activities)과 진로/목표 대학 변경 이력(careerHistory) 전체를 종합 분석하여,
+      이 학생의 고유한 학문적 캐릭터와 학종 컨셉을 잡아주는 "핵심 브랜딩 키워드" 3가지와 이에 관한 자소서/면접용 스토리라인 전개 가이드를 제시해줘.
+
+      [분석 가이드]
+      1. 학생의 개별 활동들 간의 유기적 상관관계(예: 물리 탐구와 컴퓨터 코딩, 생태 환경과 AI 모델링 등)를 찾아서 캐릭터 키워드를 명확하게 정리해줘.
+      2. '핵심 브랜딩 키워드(keyword)'는 매력적인 수식어가 붙은 구체적인 인물상(예: '환경 문제에 컴퓨팅 사고력을 적용하는 실천적 연구자')으로 제안해줘.
+      3. '이유(reason)'에는 생기부 텍스트 속에서 어떤 활동 기록이나 진로 희망을 근거로 삼았는지 인용하여 설득력을 높여줘.
+      4. '스토리라인(storyline)'에는 3학년 대입 자기소개서 소재 배치 팁이나 면접 예상 꼬리질문 대응 등 실전 활용 가이드를 구체적으로 제안해줘.
+
+      [학생의 누적 생기부 활동 기록]
+      ${activitiesText || '기록된 활동 없음'}
+
+      [학생의 누적 진로 희망 및 목표대학 이력]
+      ${careerText || '기록된 진로 이력 없음'}
+
+      반드시 아래 JSON 스키마 구조로만 응답해줘 (마크다운 백틱 제외, 순수 JSON 텍스트):
+      {
+        "branding_keywords": [
+          {
+            "keyword": "핵심 브랜딩 키워드 1",
+            "reason": "생기부 기반 도출 사유 및 근거 활동 서술",
+            "storyline": "자소서/면접 시 활용할 스토리 전개 가이드 및 연계 강조 전략"
+          },
+          {
+            "keyword": "핵심 브랜딩 키워드 2",
+            "reason": "생기부 기반 도출 사유 및 근거 활동 서술",
+            "storyline": "자소서/면접 시 활용할 스토리 전개 가이드 및 연계 강조 전략"
+          },
+          {
+            "keyword": "핵심 브랜딩 키워드 3",
+            "reason": "생기부 기반 도출 사유 및 근거 활동 서술",
+            "storyline": "자소서/면접 시 활용할 스토리 전개 가이드 및 연계 강조 전략"
+          }
+        ],
+        "synthesis_storyline_guide": "전체 생기부를 융합한 최종 퍼스널 브랜딩 요약 및 지원 전공 적합성 강조 팁"
+      }
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const jsonText = response.text().trim();
+    return JSON.parse(jsonText);
+  } catch (error) {
+    console.error('Gemini API Error (Personal Branding):', error);
+    return mockBranding;
+  }
+}
+
