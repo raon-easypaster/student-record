@@ -126,7 +126,21 @@ export const Login: React.FC = () => {
         window.location.href = '/';
       } catch (err: any) {
         console.error(err);
-        setErrorMsg(err.message || '인증 과정 중 오류가 발생했습니다.');
+        let errMsg = '인증 과정 중 오류가 발생했습니다.';
+        if (err) {
+          if (typeof err === 'string') {
+            errMsg = err;
+          } else if (err.message) {
+            errMsg = typeof err.message === 'object' ? JSON.stringify(err.message) : err.message;
+          } else {
+            try {
+              errMsg = JSON.stringify(err);
+            } catch (e) {
+              errMsg = String(err);
+            }
+          }
+        }
+        setErrorMsg(errMsg);
       } finally {
         setLoading(false);
       }
@@ -203,7 +217,23 @@ export const Login: React.FC = () => {
       navigate('/');
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(err.message || '인증 과정 중 오류가 발생했습니다.');
+      let errMsg = '인증 과정 중 오류가 발생했습니다.';
+      if (err) {
+        if (typeof err === 'string') {
+          errMsg = err;
+        } else if (err.message) {
+          errMsg = typeof err.message === 'object' ? JSON.stringify(err.message) : err.message;
+        } else if (err.error_description) {
+          errMsg = err.error_description;
+        } else {
+          try {
+            errMsg = JSON.stringify(err);
+          } catch (e) {
+            errMsg = String(err);
+          }
+        }
+      }
+      setErrorMsg(errMsg);
     } finally {
       setLoading(false);
     }
