@@ -185,10 +185,12 @@ export const Login: React.FC = () => {
         // 오류 처리
         if (error) {
           const errCode = (error as any).status ?? (error as any).code ?? '';
-          if (String(errCode) === '0' || String(error.message).includes('fetch')) {
-            throw new Error('서버 연결에 실패했습니다. Vercel 환경변수(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY)가 올바른지 확인해 주십시오.');
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '(env 없음)';
+          const rawMsg = JSON.stringify({ status: errCode, message: error.message, url: supabaseUrl.slice(0, 50) });
+          if (String(errCode) === '0' || !errCode || String(error.message).toLowerCase().includes('fetch') || String(error.message) === '0') {
+            throw new Error(`네트워크 연결 실패 (status:${errCode})\n접속 URL: ${supabaseUrl.slice(0, 60)}\n\n[해결] Vercel > Settings > Environment Variables에서 VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 확인 후 Redeploy 해주십시오.\n\n원본 오류: ${rawMsg}`);
           }
-          throw error;
+          throw new Error(`인증 오류 (status:${errCode}): ${error.message}`);
         }
 
         // data.user가 null인 경우 = 이메일 확인 중복 발송 등 (기존 이메일)
