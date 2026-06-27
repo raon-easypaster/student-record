@@ -205,3 +205,19 @@ create policy "Allow authenticated users delete own folder" on storage.objects
         bucket_id = 'reference-materials' 
         and (storage.foldername(name))[1] = auth.uid()::text
     );
+
+-- 10. 학생 일정 관리 (student_schedules)
+create table public.student_schedules (
+    id uuid default gen_random_uuid() primary key,
+    student_id uuid references auth.users on delete cascade not null,
+    title text not null,
+    schedule_date date not null,
+    category text not null check (category in ('수행평가', '세특보고서', '모의고사', '기타')),
+    notes text,
+    created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.student_schedules enable row level security;
+
+create policy "Users can perform all actions on own schedules" on public.student_schedules
+    for all using (auth.uid() = student_id) with check (auth.uid() = student_id);

@@ -12,7 +12,8 @@ import {
   Sparkles,
   Edit2,
   Check,
-  X
+  X,
+  Plus
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -36,6 +37,14 @@ interface Goal {
   status: '진행중' | '달성' | '미달성';
 }
 
+interface Schedule {
+  id: string;
+  title: string;
+  schedule_date: string;
+  category: '수행평가' | '세특보고서' | '모의고사' | '기타';
+  notes?: string;
+}
+
 interface UnivAnalysis {
   id: string;
   university_name: string;
@@ -53,6 +62,20 @@ export const Dashboard: React.FC = () => {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [recentAnalysis, setRecentAnalysis] = useState<UnivAnalysis | null>(null);
+
+  // --- Schedule Calendar states ---
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState<boolean>(false);
+  
+  // Schedule Form states
+  const [schTitle, setSchTitle] = useState<string>('');
+  const [schDate, setSchDate] = useState<string>('');
+  const [schCategory, setSchCategory] = useState<Schedule['category']>('수행평가');
+  const [schNotes, setSchNotes] = useState<string>('');
+  
+  // Calendar current view Month
+  const [calYear, setCalYear] = useState<number>(new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState<number>(new Date().getMonth());
 
   // Transition Season states
   const [prevSemProgress, setPrevSemProgress] = useState<number | null>(null);
@@ -191,6 +214,11 @@ export const Dashboard: React.FC = () => {
         setRecentAnalysis(null);
       }
 
+      // 5. Load Schedules
+      const storedSch = localStorage.getItem('mock_student_schedules');
+      const loadedSch: Schedule[] = storedSch ? JSON.parse(storedSch) : [];
+      setSchedules(loadedSch);
+
       if (profile) {
         setCareerInput(profile.career_wish || '');
         setMemoInput(profile.memo || '');
@@ -237,6 +265,9 @@ export const Dashboard: React.FC = () => {
         setRecentAnalysis(null);
       }
 
+      const { data: sch } = await supabase.from('student_schedules').select('*').eq('student_id', user?.id);
+      setSchedules(sch || []);
+
       if (profile) {
         setCareerInput(profile.career_wish || '');
         setMemoInput(profile.memo || '');
@@ -244,6 +275,96 @@ export const Dashboard: React.FC = () => {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleSaveSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!schTitle || !schDate) {
+      alert('일정 제목과 마감일을 반드시 입력해 주십시오.');
+      return;
+    }
+    const isMock = localStorage.getItem('mock_user_active') === 'true';
+    const newSchedule = {
+      title: schTitle,
+      schedule_date: schDate,
+      category: schCategory,
+      notes: schNotes
+    };
+
+    try {
+      if (isMock) {
+        const stored = localStorage.getItem('mock_student_schedules');
+        const list = stored ? JSON.parse(stored) : [];
+        const created = { ...newSchedule, id: 'mock-sch-' + Date.now() };
+        list.push(created);
+        localStorage.setItem('mock_student_schedules', JSON.stringify(list));
+        setSchedules(list);
+      } else {
+        const { error } = await supabase.from('student_schedules').insert([{ ...newSchedule, student_id: user?.id }]);
+        if (error) throw error;
+        const { data: sch } = await supabase.from('student_schedules').select('*').eq('student_id', user?.id);
+        setSchedules(sch || []);
+      }
+      alert('일정이 성공적으로 등록되었습니다!');
+      setIsScheduleModalOpen(false);
+      setSchTitle('');
+      setSchDate('');
+      setSchCategory('수행평가');
+      setSchNotes('');
+    } catch (err) {
+      console.error(err);
+      alert('일정 저장 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleDeleteSchedule = async (schId: string) => {
+    if (!confirm('해당 일정을 삭제하시겠습니까?')) return;
+    const isMock = localStorage.getItem('mock_user_active') === 'true';
+    try {
+      if (isMock) {
+        const stored = localStorage.getItem('mock_student_schedules');
+        const list = stored ? JSON.parse(stored) : [];
+        const updated = list.filter((s: any) => s.id !== schId);
+        localStorage.setItem('mock_student_schedules', JSON.stringify(updated));
+        setSchedules(updated);
+      } else {
+        const { error } = await supabase.from('student_schedules').delete().eq('id', schId);
+        if (error) throw error;
+        const { data: sch } = await supabase.from('student_schedules').select('*').eq('student_id', user?.id);
+        setSchedules(sch || []);
+      }
+      alert('일정이 삭제되었습니다.');
+    } catch (err) {
+      console.error(err);
+      alert('일정 삭제 중 오류가 발생했습니다.');
+    }
+  };
+
+  const getDDayAlerts = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    return schedules.map(s => {
+      const targetDate = new Date(s.schedule_date);
+      targetDate.setHours(0, 0, 0, 0);
+      const diffTime = targetDate.getTime() - today.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return { ...s, diffDays };
+    }).filter(s => s.diffDays >= 0 && (s.diffDays === 0 || s.diffDays === 1 || s.diffDays === 3));
+  };
+
+  const getDaysInMonth = (year: number, month: number) => {
+    const date = new Date(year, month, 1);
+    const days: (number | null)[] = [];
+    const startDay = date.getDay();
+    for (let i = 0; i < startDay; i++) {
+      days.push(null);
+    }
+    const lastDay = new Date(year, month + 1, 0).getDate();
+    for (let i = 1; i <= lastDay; i++) {
+      days.push(i);
+    }
+    return days;
   };
 
   useEffect(() => {
@@ -331,6 +452,47 @@ export const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200">
+
+      {/* 중요 일정 마감 임박 디데이 Alert 알림 */}
+      {getDDayAlerts().length > 0 && (
+        <div className="space-y-3">
+          {getDDayAlerts().map((alertItem) => {
+            const isCritical = alertItem.diffDays === 0 || alertItem.diffDays === 1;
+            return (
+              <div
+                key={alertItem.id}
+                className={`p-4 rounded-2xl border flex items-center justify-between gap-3 shadow-md ${
+                  isCritical
+                    ? 'bg-rose-50 border-rose-200 text-rose-800 animate-pulse'
+                    : 'bg-amber-50 border-amber-200 text-amber-800'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs ${
+                    isCritical ? 'bg-rose-100 text-rose-600' : 'bg-amber-100 text-amber-600'
+                  }`}>
+                    {alertItem.diffDays === 0 ? 'D-Day' : `D-${alertItem.diffDays}`}
+                  </div>
+                  <div>
+                    <p className="text-xs font-black">
+                      [{alertItem.category}] {alertItem.title}
+                    </p>
+                    <p className="text-[10px] text-slate-500 font-semibold mt-0.5">
+                      마감 기한: {alertItem.schedule_date} {alertItem.notes ? `(${alertItem.notes})` : ''}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleDeleteSchedule(alertItem.id)}
+                  className="bg-white/60 hover:bg-white text-slate-600 border border-slate-200 px-3 py-1.5 rounded-xl text-[10px] font-bold shadow-sm transition-all"
+                >
+                  완료 처리
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
       
       {/* 학년/학기 전환 안내 웰컴 배너 */}
       {showTransitionBanner && (
@@ -570,7 +732,154 @@ export const Dashboard: React.FC = () => {
 
         {/* Right Column: Recent Activities Feed & Reference Materials 아카이브 */}
         <div className="space-y-8">
-          
+
+          {/* Widget: 중요 일정 캘린더 (수행평가/세특/모의고사) */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                <Calendar className="w-4.5 h-4.5 text-indigo-600 animate-pulse" />
+                중요 일정 캘린더
+              </h4>
+              <button
+                onClick={() => {
+                  setSchDate('');
+                  setIsScheduleModalOpen(true);
+                }}
+                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-3 py-1.5 rounded-xl text-[10px] font-black transition-all flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                일정 추가
+              </button>
+            </div>
+
+            {/* 캘린더 달 조절 */}
+            <div className="flex items-center justify-between text-xs font-black text-slate-700 bg-slate-50 px-3 py-2 rounded-xl">
+              <button
+                onClick={() => {
+                  if (calMonth === 0) {
+                    setCalYear(calYear - 1);
+                    setCalMonth(11);
+                  } else {
+                    setCalMonth(calMonth - 1);
+                  }
+                }}
+                className="hover:text-indigo-600 transition-colors p-1"
+              >
+                ◀
+              </button>
+              <span>{calYear}년 {calMonth + 1}월</span>
+              <button
+                onClick={() => {
+                  if (calMonth === 11) {
+                    setCalYear(calYear + 1);
+                    setCalMonth(0);
+                  } else {
+                    setCalMonth(calMonth + 1);
+                  }
+                }}
+                className="hover:text-indigo-600 transition-colors p-1"
+              >
+                ▶
+              </button>
+            </div>
+
+            {/* 달력 판 그리드 */}
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-bold text-slate-400 border-b border-slate-100 pb-2">
+              <span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1.5 text-center">
+              {getDaysInMonth(calYear, calMonth).map((day, idx) => {
+                if (day === null) {
+                  return <div key={`empty-${idx}`} className="h-8" />;
+                }
+
+                const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const daySchedules = schedules.filter(s => s.schedule_date === dateStr);
+
+                return (
+                  <div
+                    key={`day-${day}`}
+                    onClick={() => {
+                      setSchDate(dateStr);
+                      setIsScheduleModalOpen(true);
+                    }}
+                    className={`h-8 cursor-pointer rounded-xl flex flex-col items-center justify-center relative hover:bg-indigo-50/50 transition-all border ${
+                      daySchedules.length > 0 
+                        ? 'border-indigo-100 bg-indigo-50/20 font-extrabold text-indigo-700' 
+                        : 'border-transparent text-slate-600 font-bold'
+                    }`}
+                  >
+                    <span>{day}</span>
+                    
+                    {daySchedules.length > 0 && (
+                      <div className="flex gap-0.5 mt-0.5">
+                        {daySchedules.slice(0, 3).map((s) => {
+                          const dotColor = 
+                            s.category === '수행평가' ? 'bg-purple-500' :
+                            s.category === '세특보고서' ? 'bg-cyan-500' :
+                            s.category === '모의고사' ? 'bg-amber-500' : 'bg-slate-400';
+                          return (
+                            <span
+                              key={s.id}
+                              title={s.title}
+                              className={`w-1 h-1 rounded-full ${dotColor}`}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* 일정 리스트 목록 피드 */}
+            <div className="pt-2 space-y-2 border-t border-slate-100">
+              <p className="text-[10px] text-slate-400 font-extrabold">이번 달 주요 등록 일정</p>
+              {schedules.filter(s => {
+                const sDate = new Date(s.schedule_date);
+                return sDate.getFullYear() === calYear && sDate.getMonth() === calMonth;
+              }).length === 0 ? (
+                <p className="text-[10px] text-slate-400 italic text-center py-2">등록된 일정이 없습니다.</p>
+              ) : (
+                <div className="max-h-36 overflow-y-auto space-y-2 pr-1">
+                  {schedules.filter(s => {
+                    const sDate = new Date(s.schedule_date);
+                    return sDate.getFullYear() === calYear && sDate.getMonth() === calMonth;
+                  }).map(s => {
+                    const chipColor = 
+                      s.category === '수행평가' ? 'bg-purple-500 text-white' :
+                      s.category === '세특보고서' ? 'bg-cyan-500 text-white' :
+                      s.category === '모의고사' ? 'bg-amber-500 text-white' : 'bg-slate-400 text-white';
+                    return (
+                      <div key={s.id} className="flex items-center justify-between text-[10px] p-2 bg-slate-50 rounded-xl border border-slate-100/50">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-1.5 py-0.5 rounded text-[8px] font-black ${chipColor}`}>
+                            {s.category}
+                          </span>
+                          <span className="font-extrabold text-slate-700 truncate max-w-[120px]" title={s.title}>
+                            {s.title}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-400 font-semibold">{s.schedule_date.substring(5)}</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteSchedule(s.id); }}
+                            className="text-red-400 hover:text-red-600 transition-colors font-bold"
+                          >
+                            삭제
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+          </div>
+
           {/* Widget 3: Recent Activities Feed */}
           <div className="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm flex flex-col justify-between min-h-64">
             <div>
@@ -709,7 +1018,87 @@ export const Dashboard: React.FC = () => {
           </div>
         </div>
       )}
+      {/* 중요 일정 추가 모달 */}
+      {isScheduleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl w-full max-w-md border border-slate-100 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-sm font-black text-slate-800">🗓️ 새로운 중요 일정 추가</h3>
+              <button
+                onClick={() => setIsScheduleModalOpen(false)}
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
+            <form onSubmit={handleSaveSchedule} className="space-y-4 text-xs font-semibold text-slate-700">
+              <div className="space-y-1.5">
+                <label className="text-slate-500 font-bold">일정 카테고리</label>
+                <select
+                  value={schCategory}
+                  onChange={(e) => setSchCategory(e.target.value as any)}
+                  className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl outline-none focus:border-brand-500 font-bold"
+                >
+                  <option value="수행평가">수행평가 제출일</option>
+                  <option value="세특보고서">세특 보고서 마감일</option>
+                  <option value="모의고사">모의고사 일정</option>
+                  <option value="기타">기타 일정</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-500 font-bold">일정 및 마감 제목</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="예: 수학Ⅱ 극한 바이러스 모델링 제출"
+                  value={schTitle}
+                  onChange={(e) => setSchTitle(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl outline-none focus:border-brand-500 font-bold"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-500 font-bold">마감일자 (날짜)</label>
+                <input
+                  type="date"
+                  required
+                  value={schDate}
+                  onChange={(e) => setSchDate(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl outline-none focus:border-brand-500 font-bold"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-slate-500 font-bold">상세 내용 및 메모 (선택)</label>
+                <textarea
+                  placeholder="추가 전달사항이나 준비물을 메모하십시오."
+                  value={schNotes}
+                  onChange={(e) => setSchNotes(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 p-3 rounded-2xl outline-none focus:border-brand-500 min-h-20 resize-none font-bold"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setIsScheduleModalOpen(false)}
+                  className="border border-slate-200 hover:bg-slate-100 px-4 py-2.5 rounded-xl font-bold"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white px-5 py-2.5 rounded-xl font-black shadow transition-all"
+                >
+                  일정 등록하기
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
