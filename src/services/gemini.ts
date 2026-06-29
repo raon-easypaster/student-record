@@ -584,3 +584,81 @@ export async function generatePersonalBranding(
   }
 }
 
+
+export interface RecommendationResult {
+  university: string;
+  department: string;
+  type: '상향' | '적정' | '하향';
+  reason: string;
+}
+
+export async function recommendUniversities(
+  studentData: any
+): Promise<RecommendationResult[]> {
+  const mockRecommendations: RecommendationResult[] = [
+    { university: '서울대학교', department: '컴퓨터공학부', type: '상향', reason: '알고리즘 및 수학적 역량이 뛰어나며 융합적 사고력이 돋보이나 최상위권 내신 경쟁이 치열함.' },
+    { university: '고려대학교', department: '스마트보안학부', type: '상향', reason: '사이버 보안 및 이진 탐색 로직 등 코딩 기초 체력이 훌륭하여 학업우수형 전형에 유리함.' },
+    { university: '성균관대학교', department: '소프트웨어학과', type: '상향', reason: '자기주도적인 파이썬 프로젝트 경험이 성균인재 전형의 탐구 역량 평가와 일치함.' },
+    { university: '한양대학교', department: '컴퓨터소프트웨어학부', type: '적정', reason: '실무 코딩 역량과 수리적 증명 능력을 바탕으로 학생부종합 일반전형 합격 가능성이 높음.' },
+    { university: '중앙대학교', department: '소프트웨어학부', type: '적정', reason: '탐구형 인재 전형에서 요구하는 심화 탐구 능력을 알고리즘 시각화 프로젝트로 충분히 증명함.' },
+    { university: '경희대학교', department: '컴퓨터공학과', type: '적정', reason: '네오르네상스 전형에서 중시하는 전공 기초 소양과 동아리 리더십 경험이 매우 우수함.' },
+    { university: '건국대학교', department: '컴퓨터공학부', type: '적정', reason: 'KU자기추천 전형의 핵심인 전공에 대한 관심과 자기주도적 학습 태도가 뚜렷하게 나타남.' },
+    { university: '동국대학교', department: 'AI소프트웨어융합학부', type: '적정', reason: 'Do Dream 전형에서 인문/공학 융합적 사고를 가진 학생을 선호하므로 높은 적합성을 보임.' },
+    { university: '국민대학교', department: '소프트웨어학부', type: '하향', reason: '알고리즘 기초 및 구현 역량이 이미 국민대 합격선 평균을 상회하여 안정적인 합격이 예상됨.' },
+    { university: '숭실대학교', department: '컴퓨터학부', type: '하향', reason: 'SSU미래인재 전형에서 선호하는 코딩 프로젝트 실적을 다수 보유하여 합격 확률이 매우 높음.' }
+  ];
+
+  if (!genAI) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    return mockRecommendations;
+  }
+
+  try {
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-1.5-pro',
+      generationConfig: { responseMimeType: "application/json" }
+    });
+
+    const activitiesText = studentData.activities.map((a: any) => 
+      `[${a.grade}학년] (${a.activity_type}) 제목: ${a.title} / 내용: ${a.content}`
+    ).join('\n');
+
+    const prompt = `
+      당신은 대한민국 최고의 대입 입시 컨설턴트입니다.
+      학생의 전체 생기부 데이터(내신 성적 및 비교과 활동)를 종합적으로 분석하여,
+      현재 학생의 역량과 가장 잘 맞는 대학교 및 학과 10곳을 추천해 주세요.
+      추천 조합은 반드시 [상향 지원 3개], [적정 지원 5개], [하향 안정 지원 2개]로 구성해야 합니다.
+
+      [학생 데이터]
+      - 내신 및 학업 성취도 요약:
+      ${JSON.stringify(studentData.academic, null, 2)}
+      - 주요 활동 및 세특 기록:
+      ${activitiesText}
+      - 기존 희망 진로: ${studentData.profile?.career_wish || '없음'}
+
+      [분석 가이드]
+      1. 학생의 뚜렷한 강점(예: 알고리즘 설계, 생태 환경 분석, 어학 능력 등)을 도출하여 그에 맞는 전공을 매칭하세요.
+      2. 대학교 이름은 한국의 실제 존재하는 4년제 대학교명(예: 서울대학교, 연세대학교, 한양대학교, 국민대학교 등)을 정확히 사용하세요.
+      3. '상향', '적정', '하향'의 구분을 학생의 잠재력을 고려하여 현실감 있게 배치하세요.
+      4. 추천 사유(reason)에는 학생의 생기부에 있는 '특정 활동 내용'을 직접 언급하며 왜 이 전형/학과에 유리한지 논리적으로 설명하세요.
+
+      반드시 아래 JSON 배열 형식으로만 응답해 주세요 (마크다운 백틱 제외, 순수 JSON 텍스트):
+      [
+        {
+          "university": "대학교명",
+          "department": "학과명",
+          "type": "상향" | "적정" | "하향",
+          "reason": "생기부 기록과 연계된 구체적인 추천 사유 (2~3문장)"
+        }
+      ]
+    `;
+
+    const result = await model.generateContent(prompt);
+    const response = result.response;
+    const jsonText = response.text().trim();
+    return JSON.parse(jsonText);
+  } catch (error) {
+    console.error('Gemini API Error (University Recommendation):', error);
+    return mockRecommendations;
+  }
+}

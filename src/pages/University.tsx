@@ -5,7 +5,8 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { searchUniversityAdmission } from '../services/search';
 import type { SearchResult } from '../services/search';
-import { analyzeUniversityMatch, generateFinalAdmissionReport, generatePersonalBranding } from '../services/gemini';
+import { analyzeUniversityMatch, generateFinalAdmissionReport, generatePersonalBranding, recommendUniversities } from '../services/gemini';
+import type { RecommendationResult } from '../services/gemini';
 import {
   Search,
   Sparkles,
@@ -17,7 +18,8 @@ import {
   Clock,
   Flame,
   Award,
-  FileText
+  FileText,
+  Compass
 } from 'lucide-react';
 
 interface TargetUniversity {
@@ -52,7 +54,46 @@ interface CareerGoal {
 
 export const University: React.FC = () => {
   const { activeGrade, activeSemester, user, profile } = useActiveSemester();
-  const [subTab, setSubTab] = useState<'analyze' | 'history' | 'compare' | 'finalReport' | 'branding'>('analyze');
+  const [subTab, setSubTab] = useState<'analyze' | 'recommend' | 'history' | 'compare' | 'finalReport' | 'branding'>('analyze');
+
+  // AI Recommendation states
+  const [recommendations, setRecommendations] = useState<RecommendationResult[]>([]);
+  const [generatingRecommendations, setGeneratingRecommendations] = useState<boolean>(false);
+
+  const handleGenerateRecommendations = async () => {
+    setGeneratingRecommendations(true);
+    try {
+      const isMock = localStorage.getItem('mock_user_active') === 'true';
+      let loadedActs = [];
+      let loadedAcademic = [];
+
+      if (isMock) {
+        const storedActs = localStorage.getItem('mock_activities');
+        loadedActs = storedActs ? JSON.parse(storedActs) : [];
+        const storedAcademic = localStorage.getItem('mock_academic_records');
+        loadedAcademic = storedAcademic ? JSON.parse(storedAcademic) : [];
+      } else {
+        const { data: acts } = await supabase.from('activities').select('*').eq('student_id', user?.id);
+        loadedActs = acts || [];
+        const { data: academic } = await supabase.from('academic_records').select('*').eq('student_id', user?.id);
+        loadedAcademic = academic || [];
+      }
+
+      const payload = {
+        profile: profile,
+        academic: loadedAcademic,
+        activities: loadedActs
+      };
+
+      const result = await recommendUniversities(payload);
+      setRecommendations(result);
+    } catch (err) {
+      console.error(err);
+      alert('AI 대학 추천 중 오류가 발생했습니다.');
+    } finally {
+      setGeneratingRecommendations(false);
+    }
+  };
 
   // Personal Branding states
   const [brandingData, setBrandingData] = useState<any>(null);
@@ -598,6 +639,17 @@ export const University: React.FC = () => {
           신규 AI 분석
         </button>
         <button
+          onClick={() => setSubTab('recommend')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+            subTab === 'recommend'
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : 'text-slate-500 hover:text-slate-800'
+          }`}
+        >
+          <Compass className="w-4 h-4" />
+          AI 맞춤 대학 추천
+        </button>
+        <button
           onClick={() => setSubTab('history')}
           className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
             subTab === 'history'
@@ -854,6 +906,142 @@ export const University: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      ) : subTab === 'recommend' ? (
+        <div className="grid grid-cols-1 gap-6">
+          <div className="bg-gradient-to-br from-indigo-50 to-blue-50 p-8 rounded-3xl border border-indigo-100 flex flex-col items-center justify-center text-center space-y-4 shadow-sm">
+            <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm mb-2">
+              <Compass className="w-8 h-8 text-indigo-600" />
+            </div>
+            <h3 className="text-xl font-black text-indigo-950">AI 기반 대입 맞춤 대학 10선 추천</h3>
+            <p className="text-indigo-700/80 text-sm max-w-xl leading-relaxed">
+              지금까지 입력된 생기부 데이터(성적, 비교과 활동)를 기반으로<br />
+              현재 역량과 가장 잘 맞는 대학교 10곳(상향 3개, 적정 5개, 하향 2개)을 추천해 드립니다.
+            </p>
+            <button
+              onClick={handleGenerateRecommendations}
+              disabled={generatingRecommendations}
+              className="mt-4 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl shadow-lg shadow-indigo-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {generatingRecommendations ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  AI 분석 및 추천 중...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  내 생기부 기반 대학 추천받기
+                </>
+              )}
+            </button>
+          </div>
+
+          {recommendations.length > 0 && (
+            <div className="mt-8 space-y-8">
+              {/* 상향 지원 */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-bold text-rose-600 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5" />
+                  상향 지원 (도전)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {recommendations.filter(r => r.type === '상향').map((rec, idx) => (
+                    <div key={`reach-${idx}`} className="bg-white p-5 rounded-2xl border border-rose-100 shadow-sm hover:shadow-md transition-all flex flex-col h-full">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="px-2 py-1 bg-rose-50 text-rose-600 text-[10px] font-black rounded-lg">상향</span>
+                        <h5 className="font-bold text-slate-800">{rec.university}</h5>
+                      </div>
+                      <div className="text-sm font-bold text-slate-700 mb-3 pb-3 border-b border-slate-100">
+                        {rec.department}
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed flex-grow">
+                        {rec.reason}
+                      </p>
+                      <button 
+                        onClick={() => {
+                          setUnivName(rec.university);
+                          setDeptName(rec.department);
+                          setSubTab('analyze');
+                        }}
+                        className="mt-4 w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                      >
+                        상세 분석하기 <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 적정 지원 */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-bold text-emerald-600 flex items-center gap-2">
+                  <Award className="w-5 h-5" />
+                  적정 지원 (가능)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {recommendations.filter(r => r.type === '적정').map((rec, idx) => (
+                    <div key={`target-${idx}`} className="bg-white p-5 rounded-2xl border border-emerald-100 shadow-sm hover:shadow-md transition-all flex flex-col h-full">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="px-2 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-black rounded-lg">적정</span>
+                        <h5 className="font-bold text-slate-800">{rec.university}</h5>
+                      </div>
+                      <div className="text-sm font-bold text-slate-700 mb-3 pb-3 border-b border-slate-100">
+                        {rec.department}
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed flex-grow">
+                        {rec.reason}
+                      </p>
+                      <button 
+                        onClick={() => {
+                          setUnivName(rec.university);
+                          setDeptName(rec.department);
+                          setSubTab('analyze');
+                        }}
+                        className="mt-4 w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                      >
+                        상세 분석하기 <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 하향 지원 */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-bold text-blue-600 flex items-center gap-2">
+                  <Layers className="w-5 h-5" />
+                  하향 지원 (안정)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {recommendations.filter(r => r.type === '하향').map((rec, idx) => (
+                    <div key={`safety-${idx}`} className="bg-white p-5 rounded-2xl border border-blue-100 shadow-sm hover:shadow-md transition-all flex flex-col h-full">
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="px-2 py-1 bg-blue-50 text-blue-600 text-[10px] font-black rounded-lg">하향</span>
+                        <h5 className="font-bold text-slate-800">{rec.university}</h5>
+                      </div>
+                      <div className="text-sm font-bold text-slate-700 mb-3 pb-3 border-b border-slate-100">
+                        {rec.department}
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed flex-grow">
+                        {rec.reason}
+                      </p>
+                      <button 
+                        onClick={() => {
+                          setUnivName(rec.university);
+                          setDeptName(rec.department);
+                          setSubTab('analyze');
+                        }}
+                        className="mt-4 w-full py-2 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl transition-colors flex items-center justify-center gap-1"
+                      >
+                        상세 분석하기 <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : subTab === 'history' ? (
         // ------------------ 2. 분석 이력 비교 탭 ------------------
