@@ -12,8 +12,8 @@ if (apiKey) {
     const originalModel = originalGetModel(options);
     
     originalModel.generateContent = async function(request: any) {
-      // Priority list of models to try
-      const modelsToTry = ['gemini-1.5-pro', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
+      // Priority list of models to try (Updated for 2026 API)
+      const modelsToTry = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
       let lastError = null;
       
       for (const modelName of modelsToTry) {
