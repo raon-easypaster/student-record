@@ -59,6 +59,39 @@ export const University: React.FC = () => {
   // AI Recommendation states
   const [recommendations, setRecommendations] = useState<RecommendationResult[]>([]);
   const [generatingRecommendations, setGeneratingRecommendations] = useState<boolean>(false);
+  
+  // OAuth State
+  const [oauthError, setOauthError] = useState<boolean>(false);
+
+  const handleOAuthLogin = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:5000/oauth/start', { method: 'POST' });
+      const data = await res.json();
+      if (data.url) {
+        window.open(data.url, '_blank', 'width=500,height=600');
+        
+        // Start polling for status
+        const poll = setInterval(async () => {
+          try {
+            const statusRes = await fetch('http://127.0.0.1:5000/oauth/status');
+            const statusData = await statusRes.json();
+            if (statusData.authenticated) {
+              clearInterval(poll);
+              setOauthError(false);
+              alert('구글 로그인이 성공적으로 완료되었습니다! 다시 분석을 시도해 주세요.');
+            } else if (statusData.error) {
+              clearInterval(poll);
+              alert('로그인 실패: ' + statusData.error);
+            }
+          } catch (e) {
+            // Ignore polling errors
+          }
+        }, 3000);
+      }
+    } catch (err) {
+      alert('백엔드 서버(http://127.0.0.1:5000)가 실행 중이지 않습니다. python backend/app.py 를 실행해 주세요.');
+    }
+  };
 
   const handleGenerateRecommendations = async () => {
     setGeneratingRecommendations(true);
@@ -87,9 +120,11 @@ export const University: React.FC = () => {
 
       const result = await recommendUniversities(payload);
       setRecommendations(result);
-    } catch (err) {
-      console.error(err);
-      alert('AI 대학 추천 중 오류가 발생했습니다.');
+    } catch (err: any) {
+      if (!handleOauthBypassError(err)) {
+        console.error(err);
+        alert('AI 대학 추천 중 오류가 발생했습니다.');
+      }
     } finally {
       setGeneratingRecommendations(false);
     }
@@ -122,9 +157,11 @@ export const University: React.FC = () => {
 
       const branding = await generatePersonalBranding(loadedActs, loadedHistory);
       setBrandingData(branding);
-    } catch (err) {
-      console.error(err);
-      alert('퍼스널 브랜딩 분석 중 오류가 발생했습니다.');
+    } catch (err: any) {
+      if (!handleOauthBypassError(err)) {
+        console.error(err);
+        alert('퍼스널 브랜딩 분석 중 오류가 발생했습니다.');
+      }
     } finally {
       setGeneratingBranding(false);
     }
@@ -245,9 +282,11 @@ export const University: React.FC = () => {
       setFinalReportData(result);
       setActivities(activityRecords);
       setSelectedHighlightIds(result.recommended_activity_ids);
-    } catch (err) {
-      console.error(err);
-      alert('최종 입시 정리 생성에 실패했습니다.');
+    } catch (err: any) {
+      if (!handleOauthBypassError(err)) {
+        console.error(err);
+        alert('최종 입시 정리 생성에 실패했습니다.');
+      }
     } finally {
       setGeneratingFinal(false);
     }
@@ -519,13 +558,24 @@ export const University: React.FC = () => {
       }
 
       setStatusMsg('');
-    } catch (err) {
-      console.error(err);
-      alert('분석 도중 오류가 발생했습니다.');
+    } catch (err: any) {
+      if (!handleOauthBypassError(err)) {
+        console.error(err);
+        alert('분석 도중 오류가 발생했습니다.');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const handleOauthBypassError = (err: any) => {
+    if (err.message && err.message.includes('Google OAuth Login Required')) {
+      setOauthError(true);
+      return true;
+    }
+    return false;
+  };
+
 
   // --- 희망 목표 대학 추가 (career_goal_history) ---
   const handleAddCareerGoal = async (e: React.FormEvent) => {
@@ -696,6 +746,23 @@ export const University: React.FC = () => {
           나만의 퍼스널 브랜딩
         </button>
       </div>
+
+      {oauthError && (
+        <div className="bg-rose-50 border-2 border-rose-200 p-6 rounded-2xl mb-6 shadow-sm flex flex-col items-center text-center">
+          <AlertCircle className="w-10 h-10 text-rose-500 mb-3" />
+          <h3 className="text-lg font-bold text-rose-900 mb-2">Google Gemini Advanced 연결 필요</h3>
+          <p className="text-rose-700 text-sm mb-4">
+            AI 분석을 사용하려면 구글 계정으로 로그인하여 API 권한을 승인해야 합니다. <br/>
+            (백엔드 서버의 OAuth 인증 연동)
+          </p>
+          <button
+            onClick={handleOAuthLogin}
+            className="px-6 py-3 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-md transition-all flex items-center gap-2"
+          >
+            Google 계정으로 계속하기
+          </button>
+        </div>
+      )}
 
       {subTab === 'analyze' ? (
         // ------------------ 1. 신규 분석 탭 ------------------

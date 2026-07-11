@@ -1,59 +1,73 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+// For the backend proxy, we will still use the mock generation structure if needed,
+// but the actual generation will be routed to http://127.0.0.1:5000/api/generateContent
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+const backendUrl = 'http://127.0.0.1:5000';
 
-let genAI: GoogleGenerativeAI | null = null;
-if (apiKey) {
-  genAI = new GoogleGenerativeAI(apiKey);
+async function generateContentProxy(promptOrParts: any, options: any = {}) {
+  try {
+    let requestPayload;
+    if (typeof promptOrParts === 'string') {
+      requestPayload = {
+        contents: [{ role: 'user', parts: [{ text: promptOrParts }] }],
+        generationConfig: options.generationConfig || {}
+      };
+    } else if (Array.isArray(promptOrParts)) {
+      // Assuming array of parts
+      requestPayload = {
+        contents: [{ role: 'user', parts: promptOrParts }],
+        generationConfig: options.generationConfig || {}
+      };
+    } else {
+      requestPayload = promptOrParts;
+    }
 
-  // Monkey-patch getGenerativeModel to support robust fallback across different API key capabilities
-  const originalGetModel = genAI.getGenerativeModel.bind(genAI);
-  genAI.getGenerativeModel = function(options: any) {
-    const originalModel = originalGetModel(options);
+    const res = await fetch(`${backendUrl}/api/generateContent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestPayload)
+    });
+
+    if (!res.ok) {
+      if (res.status === 401) {
+        throw new Error('Google OAuth Login Required');
+      }
+      const errorText = await res.text();
+      throw new Error(`Backend Proxy Error: ${res.status} ${errorText}`);
+    }
+
+    const data = await res.json();
     
-    originalModel.generateContent = async function(request: any) {
-      // Priority list of models to try (Updated for 2026 API)
-      const modelsToTry = ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-pro'];
-      let lastError = null;
-      
-      for (const modelName of modelsToTry) {
-        try {
-          const fallbackOptions = { ...options, model: modelName };
-          const fallbackModel = originalGetModel(fallbackOptions);
-          return await fallbackModel.generateContent.call(fallbackModel, request);
-        } catch (err: any) {
-          lastError = err;
-          // Only fallback on 404 / Model not found errors
-          if (err.message && (err.message.includes('404') || err.message.includes('not found') || err.message.includes('not supported'))) {
-            console.warn(`[Gemini API Fallback] Model ${modelName} returned 404/Not Supported. Trying next fallback model...`);
-            continue;
-          }
-        }
-      }
+    // Cloud Code API returns the response wrapped in a "response" object, and we need to unwrap candidates
+    const candidates = data.response?.candidates || [];
+    if (candidates.length === 0) {
+      throw new Error('No candidates returned from proxy');
+    }
+    
+    const textPart = candidates[0].content?.parts?.find((p: any) => p.text);
+    const text = textPart ? textPart.text : '';
 
-      // 모든 모델이 실패했을 경우, API 키에 실제로 할당된 모델 목록을 조회하여 에러 메시지에 포함합니다.
-      let availableModels = '조회 불가';
-      try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
-        if (res.ok) {
-          const data = await res.json();
-          availableModels = data.models ? data.models.map((m: any) => m.name.replace('models/', '')).join(', ') : '없음';
-        } else {
-          availableModels = `조회 실패 (${res.status})`;
-        }
-      } catch (e) {
-        availableModels = '조회 중 오류 발생';
+    return {
+      response: {
+        text: () => text
       }
-
-      throw new Error(`[API 권한 오류] 모든 최신/구형 모델(1.5 Pro, Flash, 1.0 Pro) 접근이 거부되었습니다. 원본 에러: ${lastError?.message}. \n\n[현재 API 키로 사용 가능한 모델 목록]: ${availableModels}\n\n* 이 목록에 gemini 모델이 없다면 구글 클라우드 콘솔에서 Generative Language API가 비활성화되어 있거나 결제/리전 제한에 걸린 상태입니다.`);
     };
-    return originalModel;
-  };
-} else {
-  console.warn(
-    'VITE_GEMINI_API_KEY is missing. AI analysis will run in mock demonstration mode.'
-  );
+  } catch (err: any) {
+    if (err.message === 'Google OAuth Login Required') {
+      throw err; // Special case to trigger login UI if we want to handle it locally
+    }
+    throw err;
+  }
 }
+
+// Keep a dummy genAI object to satisfy existing signature checks before proxy kicks in.
+// We'll wrap getGenerativeModel to return an object with generateContent mapped to our proxy.
+let genAI: any = {
+  getGenerativeModel: (options: any) => ({
+    generateContent: (req: any) => generateContentProxy(req, options)
+  })
+};
 
 // AI Summarization for Library Links
 export async function summarizeReferenceMaterial(
