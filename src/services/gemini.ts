@@ -21,10 +21,13 @@ async function generateContentProxy(promptOrParts: any, options: any = {}) {
       requestPayload = promptOrParts;
     }
 
+    const currentUserId = localStorage.getItem('current_user_id') || 'mock_user';
+
     const res = await fetch(`${backendUrl}/api/generateContent`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-User-Id': currentUserId
       },
       body: JSON.stringify(requestPayload)
     });

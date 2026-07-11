@@ -56,6 +56,10 @@ export const University: React.FC = () => {
   const { activeGrade, activeSemester, user, profile } = useActiveSemester();
   const [subTab, setSubTab] = useState<'analyze' | 'recommend' | 'history' | 'compare' | 'finalReport' | 'branding'>('analyze');
 
+  useEffect(() => {
+    localStorage.setItem('current_user_id', user?.id || 'mock_user');
+  }, [user]);
+
   // AI Recommendation states
   const [recommendations, setRecommendations] = useState<RecommendationResult[]>([]);
   const [generatingRecommendations, setGeneratingRecommendations] = useState<boolean>(false);
@@ -65,7 +69,12 @@ export const University: React.FC = () => {
 
   const handleOAuthLogin = async () => {
     try {
-      const res = await fetch('http://127.0.0.1:5000/oauth/start', { method: 'POST' });
+      const currentUserId = user?.id || 'mock_user';
+      const res = await fetch('http://127.0.0.1:5000/oauth/start', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: currentUserId })
+      });
       const data = await res.json();
       if (data.url) {
         window.open(data.url, '_blank', 'width=500,height=600');
@@ -73,7 +82,7 @@ export const University: React.FC = () => {
         // Start polling for status
         const poll = setInterval(async () => {
           try {
-            const statusRes = await fetch('http://127.0.0.1:5000/oauth/status');
+            const statusRes = await fetch(`http://127.0.0.1:5000/oauth/status?user_id=${currentUserId}&state=${data.state}`);
             const statusData = await statusRes.json();
             if (statusData.authenticated) {
               clearInterval(poll);
