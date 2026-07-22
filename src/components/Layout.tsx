@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useActiveSemester } from '../context/ActiveSemesterContext';
+import { supabase } from '../services/supabase';
 import { Sidebar } from './Sidebar';
 import { GradeSelector } from './GradeSelector';
 
 export const Layout: React.FC = () => {
-  const { user, loading } = useActiveSemester();
+  const { user, profile, loading } = useActiveSemester();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -28,6 +29,34 @@ export const Layout: React.FC = () => {
 
   if (!user) {
     return null; // Login.tsx will be loaded by Route
+  }
+
+  if (profile && !profile.is_approved) {
+    return (
+      <div className="flex min-h-screen bg-slate-50 items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] p-8 text-center border border-slate-100/60">
+          <div className="w-20 h-20 bg-indigo-50 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <svg className="w-10 h-10 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-3">가입 승인 대기 중</h2>
+          <p className="text-slate-500 mb-8 leading-relaxed">
+            관리자의 가입 승인이 완료된 후 이용하실 수 있습니다.<br/>결제 또는 승인 요청을 완료해 주세요.
+          </p>
+          <button 
+            onClick={() => {
+              supabase.auth.signOut();
+              localStorage.removeItem('mock_user_active');
+              window.location.href = '/login';
+            }}
+            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-4 rounded-xl transition-colors duration-200"
+          >
+            로그아웃
+          </button>
+        </div>
+      </div>
+    );
   }
 
   // Determine current page title
