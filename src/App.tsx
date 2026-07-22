@@ -3,6 +3,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ActiveSemesterProvider } from './context/ActiveSemesterContext';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
+import { Pricing } from './pages/Pricing';
+import { PaymentSuccess } from './pages/PaymentSuccess';
+import { PaymentFail } from './pages/PaymentFail';
 import { Dashboard } from './pages/Dashboard';
 import { Academic } from './pages/Academic';
 import { Activities } from './pages/Activities';
@@ -20,6 +23,11 @@ const App: React.FC = () => {
           {/* Auth Route */}
           <Route path="/login" element={<Login />} />
           
+          {/* Payment Routes */}
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/payment/success" element={<PaymentSuccess />} />
+          <Route path="/payment/fail" element={<PaymentFail />} />
+
           {/* Anonymized Counseling Shared Link */}
           <Route path="/share/:token" element={<ShareView />} />
 

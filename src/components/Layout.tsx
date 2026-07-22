@@ -42,18 +42,26 @@ export const Layout: React.FC = () => {
           </div>
           <h2 className="text-2xl font-bold text-slate-800 mb-3">가입 승인 대기 중</h2>
           <p className="text-slate-500 mb-8 leading-relaxed">
-            관리자의 가입 승인이 완료된 후 이용하실 수 있습니다.<br/>결제 또는 승인 요청을 완료해 주세요.
+            관리자의 가입 승인이 완료된 후 이용하실 수 있습니다.<br/>아래 버튼을 눌러 정기 결제 카드를 등록하시면 즉시 승인 처리됩니다.
           </p>
-          <button 
-            onClick={() => {
-              supabase.auth.signOut();
-              localStorage.removeItem('mock_user_active');
-              window.location.href = '/login';
-            }}
-            className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-4 rounded-xl transition-colors duration-200"
-          >
-            로그아웃
-          </button>
+          <div className="space-y-3">
+            <button 
+              onClick={() => navigate('/pricing')}
+              className="w-full bg-brand-600 hover:bg-brand-700 text-white font-medium py-3 px-4 rounded-xl transition-colors duration-200"
+            >
+              구독 요금제 결제 및 카드 등록
+            </button>
+            <button 
+              onClick={() => {
+                supabase.auth.signOut();
+                localStorage.removeItem('mock_user_active');
+                window.location.href = '/login';
+              }}
+              className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-medium py-3 px-4 rounded-xl transition-colors duration-200"
+            >
+              로그아웃
+            </button>
+          </div>
         </div>
       </div>
     );
